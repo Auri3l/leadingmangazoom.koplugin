@@ -103,23 +103,34 @@ function Grid:expandPage(ges)
     local screen_w = Screen:getWidth()
     local screen_h = Screen:getHeight()
 
-    local center_x = ges and ges.pos and ges.pos.x or (screen_w / 2)
-    local center_y = ges and ges.pos and ges.pos.y or (screen_h / 2)
+    -- Get page dimensions for accurate zoom calculation
+    local page_size = self.ui.document:getNativePageDimensions(zooming.current_page)
+    if not page_size then return end
 
-    self.ui:handleEvent(Event:new("SetZoomMode", "free"))
+    -- Calculate zoom to fit page at 2x (a generous zoom for reading)
+    local zoom_w = screen_w / page_size.w
+    local zoom_h = screen_h / page_size.h
+    local new_zoom = math.min(zoom_w, zoom_h) * 2
 
-    local current_zoom = zooming.zoom or 1
-    local new_zoom = current_zoom * 2
-
-    zooming.zoom = new_zoom
-    view:onZoomUpdate(new_zoom)
-
-    if view.SetZoomCenter then
-        view:SetZoomCenter(center_x * 2, center_y * 2)
+    -- Determine center point from gesture or default to page center
+    local center_x, center_y
+    if ges and ges.pos then
+        -- Convert screen position to page coordinates, then scale to new zoom
+        local old_zoom = view.state.zoom or 1
+        center_x = ges.pos.x * new_zoom / old_zoom
+        center_y = ges.pos.y * new_zoom / old_zoom
+    else
+        center_x = page_size.w * new_zoom / 2
+        center_y = page_size.h * new_zoom / 2
     end
 
-    self.ui:handleEvent(Event:new("RedrawCurrentView"))
-    UIManager:setDirty(view, "full")
+    -- Follow KOReader's onToggleFreeZoom pattern:
+    -- 1. Set zoom value FIRST
+    -- 2. Then trigger mode change (which recalculates using our zoom value)
+    -- 3. Then set center position
+    zooming.zoom = new_zoom
+    self.ui:handleEvent(Event:new("SetZoomMode", "free"))
+    view:SetZoomCenter(center_x, center_y)
 end
 
 function Grid:expand(cell)
@@ -141,29 +152,32 @@ function Grid:expand(cell)
         end
     end
 
-    local col = (cell - 1) % 2
-    local row = math.floor((cell - 1) / 2)
-
     local screen_w = Screen:getWidth()
     local screen_h = Screen:getHeight()
 
-    local center_x = (col * screen_w / 2) + (screen_w / 4)
-    local center_y = (row * screen_h / 2) + (screen_h / 4)
+    -- Get native page dimensions for accurate coordinate calculation
+    local page_size = self.ui.document:getNativePageDimensions(zooming.current_page)
+    if not page_size then return end
 
-    self.ui:handleEvent(Event:new("SetZoomMode", "free"))
+    -- Calculate zoom to fit one quadrant to the screen
+    -- Each quadrant is half the page width and half the page height
+    local zoom_w = screen_w / (page_size.w / 2)
+    local zoom_h = screen_h / (page_size.h / 2)
+    local new_zoom = math.min(zoom_w, zoom_h)
 
-    local current_zoom = zooming.zoom or 1
-    local new_zoom = current_zoom * 2
+    -- Calculate center of the target quadrant in page coordinates, scaled by new zoom
+    local col = (cell - 1) % 2
+    local row = math.floor((cell - 1) / 2)
+    local center_x = (col * 0.5 + 0.25) * page_size.w * new_zoom
+    local center_y = (row * 0.5 + 0.25) * page_size.h * new_zoom
 
+    -- Follow KOReader's onToggleFreeZoom pattern:
+    -- 1. Set zoom value FIRST
+    -- 2. Then trigger mode change (which recalculates using our zoom value)
+    -- 3. Then set center position
     zooming.zoom = new_zoom
-    view:onZoomUpdate(new_zoom)
-
-    if view.SetZoomCenter then
-        view:SetZoomCenter(center_x * 2, center_y * 2)
-    end
-
-    self.ui:handleEvent(Event:new("RedrawCurrentView"))
-    UIManager:setDirty(view, "full")
+    self.ui:handleEvent(Event:new("SetZoomMode", "free"))
+    view:SetZoomCenter(center_x, center_y)
 end
 
 function Grid:collapse()
@@ -187,9 +201,6 @@ function Grid:collapse()
     else
         self.ui:handleEvent(Event:new("SetZoomMode", "page"))
     end
-
-    self.ui:handleEvent(Event:new("RedrawCurrentView"))
-    UIManager:setDirty(self.ui.view, "full")
 end
 
 function Grid:onGesture(quadrant)
