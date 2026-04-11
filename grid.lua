@@ -1,0 +1,236 @@
+--[[--
+Grid zoom module for LeadingMangaZoom plugin.
+@module leadingmangazoom.grid
+]]--
+
+local Device = require("device")
+local Event = require("ui/event")
+local UIManager = require("ui/uimanager")
+local Screen = Device.screen
+
+local Grid = {
+    enabled = true,
+    page_zoom_enabled = true,
+    rtl_enabled = false,
+    expanded_cell = nil,
+    original_zoom_mode = nil,
+    original_page_turn_direction = nil,
+    ui = nil,
+}
+
+local QUADRANTS = {
+    { id = "lmz_2tap_q1", x = 0,   y = 0,   w = 0.5, h = 0.5 },
+    { id = "lmz_2tap_q2", x = 0.5, y = 0,   w = 0.5, h = 0.5 },
+    { id = "lmz_2tap_q3", x = 0,   y = 0.5, w = 0.5, h = 0.5 },
+    { id = "lmz_2tap_q4", x = 0.5, y = 0.5, w = 0.5, h = 0.5 },
+}
+
+function Grid:init(ui, Settings)
+    self.ui = ui
+    self.enabled = Settings:get("grid_enabled")
+    self.page_zoom_enabled = Settings:get("page_zoom_enabled")
+    if self.page_zoom_enabled == nil then self.page_zoom_enabled = true end
+    self.rtl_enabled = Settings:get("grid_rtl_enabled") or false
+    self.expanded_cell = nil
+    self.original_zoom_mode = nil
+    self.original_page_turn_direction = nil
+end
+
+function Grid:reset()
+    self.expanded_cell = nil
+    self.original_zoom_mode = nil
+    self.original_page_turn_direction = nil
+end
+
+function Grid:setupTouchZones(handler)
+    if not Device:isTouchDevice() then return end
+
+    local zones = {}
+    for i, q in ipairs(QUADRANTS) do
+        zones[#zones + 1] = {
+            id = q.id,
+            ges = "two_finger_tap",
+            screen_zone = { ratio_x = q.x, ratio_y = q.y, ratio_w = q.w, ratio_h = q.h },
+            handler = function(ges) return handler(i, ges) end,
+        }
+    end
+
+    zones[#zones + 1] = {
+        id = "lmz_single_tap",
+        ges = "tap",
+        screen_zone = { ratio_x = 0, ratio_y = 0, ratio_w = 1, ratio_h = 1 },
+        handler = function(ges) return self:onSingleTap(ges) end,
+    }
+
+    zones[#zones + 1] = {
+        id = "lmz_page_spread",
+        ges = "spread",
+        screen_zone = { ratio_x = 0, ratio_y = 0, ratio_w = 1, ratio_h = 1 },
+        handler = function(ges)
+            if self.page_zoom_enabled and not self.expanded_cell then
+                self:expandPage(ges)
+                return true
+            end
+            return false
+        end,
+    }
+
+    zones[#zones + 1] = {
+        id = "lmz_page_pinch",
+        ges = "pinch",
+        screen_zone = { ratio_x = 0, ratio_y = 0, ratio_w = 1, ratio_h = 1 },
+        handler = function(ges)
+            if self.page_zoom_enabled and self.expanded_cell == 0 then
+                self:collapse()
+                return true
+            end
+            return false
+        end,
+    }
+
+    self.ui:registerTouchZones(zones)
+end
+
+function Grid:expandPage(ges)
+    local view = self.ui.view
+    local zooming = self.ui.zooming
+
+    if not view or not zooming then return end
+
+    self.original_zoom_mode = zooming.zoom_mode
+    self.expanded_cell = 0 -- 0 indicates full page zoom
+
+    local screen_w = Screen:getWidth()
+    local screen_h = Screen:getHeight()
+
+    local center_x = ges and ges.pos and ges.pos.x or (screen_w / 2)
+    local center_y = ges and ges.pos and ges.pos.y or (screen_h / 2)
+
+    self.ui:handleEvent(Event:new("SetZoomMode", "free"))
+
+    local current_zoom = zooming.zoom or 1
+    local new_zoom = current_zoom * 2
+
+    zooming.zoom = new_zoom
+    view:onZoomUpdate(new_zoom)
+
+    if view.SetZoomCenter then
+        view:SetZoomCenter(center_x * 2, center_y * 2)
+    end
+
+    self.ui:handleEvent(Event:new("RedrawCurrentView"))
+    UIManager:setDirty(view, "full")
+end
+
+function Grid:expand(cell)
+    local view = self.ui.view
+    local zooming = self.ui.zooming
+
+    if not view or not zooming then return end
+
+    self.original_zoom_mode = zooming.zoom_mode
+    self.expanded_cell = cell
+
+    -- Save and set RTL direction if enabled
+    if self.rtl_enabled then
+        local configurable = self.ui.document and self.ui.document.configurable
+        if configurable then
+            self.original_page_turn_direction = configurable.writing_direction
+            configurable.writing_direction = 1 -- 1 = RTL in KOReader
+            self.ui:handleEvent(Event:new("RedrawCurrentPage"))
+        end
+    end
+
+    local col = (cell - 1) % 2
+    local row = math.floor((cell - 1) / 2)
+
+    local screen_w = Screen:getWidth()
+    local screen_h = Screen:getHeight()
+
+    local center_x = (col * screen_w / 2) + (screen_w / 4)
+    local center_y = (row * screen_h / 2) + (screen_h / 4)
+
+    self.ui:handleEvent(Event:new("SetZoomMode", "free"))
+
+    local current_zoom = zooming.zoom or 1
+    local new_zoom = current_zoom * 2
+
+    zooming.zoom = new_zoom
+    view:onZoomUpdate(new_zoom)
+
+    if view.SetZoomCenter then
+        view:SetZoomCenter(center_x * 2, center_y * 2)
+    end
+
+    self.ui:handleEvent(Event:new("RedrawCurrentView"))
+    UIManager:setDirty(view, "full")
+end
+
+function Grid:collapse()
+    local zooming = self.ui.zooming
+    if not zooming then return end
+
+    self.expanded_cell = nil
+
+    -- Restore original page turn direction if RTL was enabled
+    if self.rtl_enabled and self.original_page_turn_direction ~= nil then
+        local configurable = self.ui.document and self.ui.document.configurable
+        if configurable then
+            configurable.writing_direction = self.original_page_turn_direction
+            self.original_page_turn_direction = nil
+        end
+    end
+
+    if self.original_zoom_mode then
+        self.ui:handleEvent(Event:new("SetZoomMode", self.original_zoom_mode))
+        self.original_zoom_mode = nil
+    else
+        self.ui:handleEvent(Event:new("SetZoomMode", "page"))
+    end
+
+    self.ui:handleEvent(Event:new("RedrawCurrentView"))
+    UIManager:setDirty(self.ui.view, "full")
+end
+
+function Grid:onGesture(quadrant)
+    if not self.enabled then return false end
+
+    if self.expanded_cell then
+        self:collapse()
+    else
+        self:expand(quadrant)
+    end
+
+    return true
+end
+
+function Grid:onSingleTap(ges)
+    if self.expanded_cell then
+        self:collapse()
+        return true
+    end
+    return false
+end
+
+function Grid:toggle()
+    self.enabled = not self.enabled
+    if not self.enabled and self.expanded_cell then
+        self:collapse()
+    end
+    return self.enabled
+end
+
+function Grid:toggleRTL()
+    self.rtl_enabled = not self.rtl_enabled
+    return self.rtl_enabled
+end
+
+function Grid:togglePageZoom()
+    self.page_zoom_enabled = not self.page_zoom_enabled
+    if not self.page_zoom_enabled and self.expanded_cell == 0 then
+        self:collapse()
+    end
+    return self.page_zoom_enabled
+end
+
+return Grid
