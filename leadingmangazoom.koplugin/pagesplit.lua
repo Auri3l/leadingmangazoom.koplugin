@@ -48,27 +48,23 @@ function PageSplit:zoomToHalf(half)
 
     self.current_half = half
 
-    -- Use contentheight to fit the full page height on screen,
-    -- then pan horizontally to the desired half
+    -- Use contentheight zoom mode to fit the full page height on screen
     self.ui:handleEvent(Event:new("SetZoomMode", "contentheight"))
 
-    -- Schedule pan after zoom mode has been applied
+    -- Schedule pan after zoom mode has been applied and recalculate() has run
     UIManager:scheduleIn(0.1, function()
-        if not view or not view.visible_area then return end
-        local page_area = view.page_area
-        if page_area then
-            if half == "left" then
-                -- Pan to the left edge
-                view.visible_area.x = page_area.x
-            else
-                -- Pan to the right edge: offset so the right side of the page is visible
-                local overflow = page_area.w - view.visible_area.w
-                if overflow > 0 then
-                    view.visible_area.x = page_area.x + overflow
-                end
-            end
+        if not view or not view.visible_area or not view.page_area then return end
+
+        -- Pan the visible_area to the correct half using the view's PanningUpdate
+        if half == "left" then
+            -- Pan to the leftmost position
+            local dx = view.page_area.x - view.visible_area.x
+            view:PanningUpdate(dx, 0)
+        else
+            -- Pan to the rightmost position
+            local dx = (view.page_area.x + view.page_area.w - view.visible_area.w) - view.visible_area.x
+            view:PanningUpdate(dx, 0)
         end
-        self.ui:handleEvent(Event:new("RedrawCurrentPage"))
     end)
 end
 
