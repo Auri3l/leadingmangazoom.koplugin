@@ -16,6 +16,8 @@ local SUPPORTED_EXTENSIONS = {
     cbz = true,
     cbr = true,
     pdf = true,
+    cbt = true,
+    cb7 = true,
 }
 
 local LeadingMangaZoom = InputContainer:extend{
