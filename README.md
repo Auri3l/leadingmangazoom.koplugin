@@ -49,6 +49,7 @@ LeadingMangaZoom is optimized for **fixed-layout** documents. It supports:
 - **CBR** (.rar)
 - **CBT** (.tar)
 - **CB7** (.7z)
+- **CZB** (.czb)
 - **PDF** (.pdf)
 
 > [!NOTE]

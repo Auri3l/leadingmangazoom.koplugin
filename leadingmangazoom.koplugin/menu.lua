@@ -27,7 +27,7 @@ function Menu:build(plugin, Grid, AutoRotate, PageSplit, Settings)
                 checked_func = function() return Grid.enabled end,
                 callback = function()
                     if not plugin:isComic() then
-                        self_menu:showMessage("Open a CBZ, CBR, CBT, CB7 or PDF file first.")
+                        self_menu:showMessage("Open a CBZ, CBR, CBT, CB7, CZB or PDF file first.")
                         return
                     end
                     local enabled = Grid:toggle()
@@ -155,7 +155,7 @@ function Menu:build(plugin, Grid, AutoRotate, PageSplit, Settings)
                         "Auto-rotates landscape pages.\n" ..
                         "Split landscape into two pages.\n\n" ..
                         "Hold option to set as default.\n\n" ..
-                        "Supports: CBZ, CBR, CBT, CB7, PDF\n\n" ..
+                        "Supports: CBZ, CBR, CBT, CB7, CZB, PDF\n\n" ..
                         "Forked from Maximum by @shac0x\n" ..
                         "Maintained by @Aur13l"
                     )
