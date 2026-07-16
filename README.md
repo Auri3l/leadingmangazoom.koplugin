@@ -71,6 +71,17 @@ LeadingMangaZoom is optimized for **fixed-layout** documents. It supports:
 - Based on [maximum.koplugin](https://github.com/Shac0x/maximum.koplugin) by [@Shac0x](https://github.com/Shac0x)
 - Auto-rotate logic inspired by [koreader-autorotate](https://github.com/Extraltodeus/koreader-autorotate) by [@Extraltodeus](https://github.com/Extraltodeus)
 
+## 📅 Changelog
+
+### v1.1.0 (2026-07-16)
+- **Added CZB Support**: Added `.czb` to the supported fixed-layout comic formats list.
+- **Fixed Zoom Coordinate Offsets**: Zooming now accurately aligns to touch centers even when the page is panned.
+- **Enhanced Page Split Navigation**: Page split now tracks page numbers to properly reset the half-page panning view when moving to new landscape pages.
+- **Added RTL Page Splitting**: Landscape pages in Right-to-Left orientation (e.g. Japanese manga) now split from Right-to-Left.
+- **Improved Pinch Gestures**: Enabled pinch-to-zoom-out gesture to collapse both page-zoom and quadrant-zoom views.
+
+---
+
 ## ⚖️ License
 
 GPL-3.0 — see [LICENSE](LICENSE).
