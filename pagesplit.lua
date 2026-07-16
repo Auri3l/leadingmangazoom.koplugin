@@ -16,6 +16,7 @@ local PageSplit = {
     original_zoom_mode = nil,
     ui = nil,
     document = nil,
+    last_pageno = nil,
 }
 
 function PageSplit:init(ui, Settings)
@@ -28,6 +29,7 @@ function PageSplit:reset()
     self.current_half = nil
     self.is_landscape_page = false
     self.original_zoom_mode = nil
+    self.last_pageno = nil
 end
 
 function PageSplit:isPageLandscape(document, pageno)
@@ -35,6 +37,18 @@ function PageSplit:isPageLandscape(document, pageno)
     local page_size = document:getNativePageDimensions(pageno)
     if not page_size then return false end
     return page_size.w > page_size.h
+end
+
+function PageSplit:isRTL()
+    local Grid = require("grid")
+    if Grid and Grid.rtl_enabled then
+        return true
+    end
+    -- Fallback to document's writing direction
+    if self.document and self.document.configurable then
+        return self.document.configurable.writing_direction == 1
+    end
+    return false
 end
 
 function PageSplit:zoomToHalf(half)
@@ -82,11 +96,19 @@ function PageSplit:onPageUpdate(document, pageno)
     self.document = document
     local is_landscape = self:isPageLandscape(document, pageno)
 
-    if is_landscape and not self.is_landscape_page then
-        self.is_landscape_page = true
-        self:zoomToHalf("left")
+    if is_landscape then
+        if not self.is_landscape_page or pageno ~= self.last_pageno then
+            self.is_landscape_page = true
+            self.last_pageno = pageno
+            if self:isRTL() then
+                self:zoomToHalf("right")
+            else
+                self:zoomToHalf("left")
+            end
+        end
     elseif not is_landscape and self.is_landscape_page then
         self.is_landscape_page = false
+        self.last_pageno = pageno
         self:restoreZoom()
     end
 end
@@ -96,13 +118,25 @@ function PageSplit:onGotoNextPage()
         return false
     end
 
-    if self.current_half == "left" then
-        self:zoomToHalf("right")
-        return true
-    elseif self.current_half == "right" then
-        self.is_landscape_page = false
-        self:restoreZoom()
-        return false
+    local rtl = self:isRTL()
+    if rtl then
+        if self.current_half == "right" then
+            self:zoomToHalf("left")
+            return true
+        elseif self.current_half == "left" then
+            self.is_landscape_page = false
+            self:restoreZoom()
+            return false
+        end
+    else
+        if self.current_half == "left" then
+            self:zoomToHalf("right")
+            return true
+        elseif self.current_half == "right" then
+            self.is_landscape_page = false
+            self:restoreZoom()
+            return false
+        end
     end
 
     return false
@@ -113,13 +147,25 @@ function PageSplit:onGotoPrevPage()
         return false
     end
 
-    if self.current_half == "right" then
-        self:zoomToHalf("left")
-        return true
-    elseif self.current_half == "left" then
-        self.is_landscape_page = false
-        self:restoreZoom()
-        return false
+    local rtl = self:isRTL()
+    if rtl then
+        if self.current_half == "left" then
+            self:zoomToHalf("right")
+            return true
+        elseif self.current_half == "right" then
+            self.is_landscape_page = false
+            self:restoreZoom()
+            return false
+        end
+    else
+        if self.current_half == "right" then
+            self:zoomToHalf("left")
+            return true
+        elseif self.current_half == "left" then
+            self.is_landscape_page = false
+            self:restoreZoom()
+            return false
+        end
     end
 
     return false

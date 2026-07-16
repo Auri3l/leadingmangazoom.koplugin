@@ -80,7 +80,7 @@ function Grid:setupTouchZones(handler)
         ges = "pinch",
         screen_zone = { ratio_x = 0, ratio_y = 0, ratio_w = 1, ratio_h = 1 },
         handler = function(ges)
-            if self.page_zoom_enabled and self.expanded_cell == 0 then
+            if self.page_zoom_enabled and self.expanded_cell then
                 self:collapse()
                 return true
             end
@@ -117,8 +117,10 @@ function Grid:expandPage(ges)
     if ges and ges.pos then
         -- Convert screen position to page coordinates, then scale to new zoom
         local old_zoom = view.state.zoom or 1
-        center_x = ges.pos.x * new_zoom / old_zoom
-        center_y = ges.pos.y * new_zoom / old_zoom
+        local vx = view.visible_area and view.visible_area.x or 0
+        local vy = view.visible_area and view.visible_area.y or 0
+        center_x = (vx + ges.pos.x) * new_zoom / old_zoom
+        center_y = (vy + ges.pos.y) * new_zoom / old_zoom
     else
         center_x = page_size.w * new_zoom / 2
         center_y = page_size.h * new_zoom / 2
