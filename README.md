@@ -73,6 +73,9 @@ LeadingMangaZoom is optimized for **fixed-layout** documents. It supports:
 
 ## 📅 Changelog
 
+### v1.1.1 (2026-07-25)
+- **Fixed Physical Button Remapping Issue**: Resolved a bug on devices with physical page-turn buttons (e.g. Kobo Sage, Kobo Libra 2, Kobo Forma, PocketBook, Kindle Oasis) where auto-rotating landscape pages caused physical buttons to invert and kick the user back to the previous page.
+
 ### v1.1.0 (2026-07-16)
 - **Added CZB Support**: Added `.czb` to the supported fixed-layout comic formats list.
 - **Fixed Zoom Coordinate Offsets**: Zooming now accurately aligns to touch centers even when the page is panned.
