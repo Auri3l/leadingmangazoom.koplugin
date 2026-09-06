@@ -33,6 +33,12 @@ end
 function Settings:set(key, value)
     if not settings then self:load() end
     settings:saveSetting(key, value)
+    -- These modes are mutually exclusive, including saved defaults.
+    if value and key == "pagesplit_enabled" then
+        settings:saveSetting("autorotate_enabled", false)
+    elseif value and key == "autorotate_enabled" then
+        settings:saveSetting("pagesplit_enabled", false)
+    end
     settings:flush()
 end
 
