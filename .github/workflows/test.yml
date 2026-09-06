@@ -1,0 +1,36 @@
+name: Lua regression tests
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lua runtimes
+        run: sudo apt-get update && sudo apt-get install -y lua5.1 luajit
+      - name: Check syntax
+        run: find leadingmangazoom.koplugin tests -name '*.lua' -exec luac5.1 -p {} \;
+      - name: Run Lua 5.1 tests
+        run: lua5.1 tests/run.lua
+      - name: Run LuaJIT tests
+        run: luajit tests/run.lua
+  koreader-touch-integration:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        koreader: [v2026.03, v2026.07]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: koreader/koreader
+          ref: ${{ matrix.koreader }}
+          path: .koreader
+          sparse-checkout: frontend
+      - name: Install LuaJIT
+        run: sudo apt-get update && sudo apt-get install -y luajit
+      - name: Test real KOReader touch dispatch
+        env:
+          KOREADER_SOURCE: .koreader
+        run: luajit tests/run.lua

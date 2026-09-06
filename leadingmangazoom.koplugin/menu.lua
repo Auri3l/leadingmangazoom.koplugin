@@ -21,6 +21,7 @@ function Menu:build(plugin, Grid, AutoRotate, PageSplit, Settings)
     return {
         text = _("Leading Manga Zoom"),
         sorting_hint = "typeset",
+        enabled_func = function() return plugin:isComic() end,
         sub_item_table = {
             {
                 text = _("Enable Grid Mode"),
@@ -84,6 +85,7 @@ function Menu:build(plugin, Grid, AutoRotate, PageSplit, Settings)
                     else
                         msg = "Auto-rotate OFF"
                     end
+                    plugin:refreshPage()
                     self_menu:showMessage(msg)
                 end,
                 hold_callback = function()
@@ -99,6 +101,7 @@ function Menu:build(plugin, Grid, AutoRotate, PageSplit, Settings)
                         checked_func = function() return AutoRotate.clockwise end,
                         callback = function()
                             AutoRotate:setDirection(true)
+                            plugin:refreshPage()
                             self_menu:showMessage("Rotation: Clockwise", 1)
                         end,
                         hold_callback = function()
@@ -112,6 +115,7 @@ function Menu:build(plugin, Grid, AutoRotate, PageSplit, Settings)
                         checked_func = function() return not AutoRotate.clockwise end,
                         callback = function()
                             AutoRotate:setDirection(false)
+                            plugin:refreshPage()
                             self_menu:showMessage("Rotation: Counter-clockwise", 1)
                         end,
                         hold_callback = function()
@@ -138,6 +142,7 @@ function Menu:build(plugin, Grid, AutoRotate, PageSplit, Settings)
                     else
                         msg = "Page Split OFF"
                     end
+                    plugin:refreshPage()
                     self_menu:showMessage(msg)
                 end,
                 hold_callback = function()

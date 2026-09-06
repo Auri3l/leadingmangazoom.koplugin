@@ -76,8 +76,8 @@ function AutoRotate:restorePageButtons()
     self.page_button_rotation_backup = nil
 end
 
-function AutoRotate:init(Settings)
-    self.enabled = Settings:get("autorotate_enabled")
+function AutoRotate:init(Settings, pagesplit_enabled)
+    self.enabled = Settings:get("autorotate_enabled") and not pagesplit_enabled
     self.clockwise = Settings:get("rotate_clockwise")
     self.last_portrait_rotation_mode = Screen:getRotationMode()
 
@@ -125,7 +125,6 @@ function AutoRotate:restorePortrait()
     if cur_rotation == Screen.DEVICE_ROTATED_CLOCKWISE or
        cur_rotation == Screen.DEVICE_ROTATED_COUNTER_CLOCKWISE then
         local new_rotation = self.last_portrait_rotation_mode or Screen.DEVICE_ROTATED_UPRIGHT
-        Screen:setRotationMode(new_rotation)
         UIManager:broadcastEvent(Event:new("SetRotationMode", new_rotation))
     end
 end
