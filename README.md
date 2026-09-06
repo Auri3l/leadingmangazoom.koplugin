@@ -73,6 +73,29 @@ LeadingMangaZoom is optimized for **fixed-layout** documents. It supports:
 
 ## 📅 Changelog
 
+### v1.1.2 (2026-09-06)
+- Load plugin modules by their own paths to avoid crashes and duplicate menus when Maximum or another plugin uses the same module names.
+- Give grid, spread, pinch and zoom-collapse taps priority over KOReader's built-in gestures. Disabled features let the original gestures run.
+- Handle split-page navigation through KOReader's paging controller for taps, swipes and physical buttons, including backward navigation into the last half of a spread.
+- Apply landscape settings to the opening page and immediately after toggling modes. Keep auto-rotate and split defaults mutually exclusive.
+- Cancel stale split-page pans on navigation, disabling or closing; preserve the selected half on redraw.
+- Restore previous zoom, pan, reading direction and continuous-view state after temporary zooming, and account for screen margins in spread coordinates.
+- Preserve the v1.1.1 physical-button fix and let KOReader update its layout when restoring portrait orientation.
+
+### Developer checks
+
+From the repository root, run `luajit tests/run.lua` or `lua5.1 tests/run.lua`.
+The tests use small KOReader doubles; they do not replace validation on an e-reader.
+To also exercise KOReader's real touch-zone ordering and gesture dispatch, run
+`KOREADER_SOURCE=/path/to/koreader luajit tests/run.lua`.
+
+Device checks before release: with Reflow disabled, try two-finger tap, spread,
+pinch and tap-to-collapse; enable splitting on an already-open landscape page;
+navigate both ways through consecutive spreads in LTR and RTL, using touch and
+physical buttons; disable splitting and check that the previous view returns.
+Maximum can remain installed, but enable only one plugin's overlapping gesture
+features at a time if both are configured to handle the same gesture.
+
 ### v1.1.1 (2026-07-25)
 - **Fixed Physical Button Remapping Issue**: Resolved a bug on devices with physical page-turn buttons (e.g. Kobo Sage, Kobo Libra 2, Kobo Forma, PocketBook, Kindle Oasis) where auto-rotating landscape pages caused physical buttons to invert and kick the user back to the previous page.
 
