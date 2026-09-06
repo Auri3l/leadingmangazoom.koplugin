@@ -73,7 +73,7 @@ LeadingMangaZoom is optimized for **fixed-layout** documents. It supports:
 
 ## 📅 Changelog
 
-### Unreleased
+### v1.1.2 (2026-09-06)
 - Load plugin modules by their own paths to avoid crashes and duplicate menus when Maximum or another plugin uses the same module names.
 - Give grid, spread, pinch and zoom-collapse taps priority over KOReader's built-in gestures. Disabled features let the original gestures run.
 - Handle split-page navigation through KOReader's paging controller for taps, swipes and physical buttons, including backward navigation into the last half of a spread.
