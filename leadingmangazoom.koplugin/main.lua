@@ -41,8 +41,12 @@ function LeadingMangaZoom:onReaderReady()
     -- The opening PageUpdate occurs before ReaderReady. Wait until every
     -- reader module has initialized, then apply settings to the current page.
     self.ui:registerPostReaderReadyCallback(function()
-        Grid:setupTouchZones(function() return self:isComic() end)
+        local is_comic = function() return self:isComic() end
+        Grid:setupTouchZones(is_comic)
         PageSplit:installNavigation()
+        -- Quadrant navigation continues onto the next page, except onto a
+        -- split spread, whose halves PageSplit already shows separately.
+        Grid:installNavigation(is_comic, function() return not PageSplit.is_landscape_page end)
         self.ready = true
         self:refreshPage()
     end)
@@ -61,6 +65,7 @@ end
 
 function LeadingMangaZoom:onPageUpdate(pageno)
     if self.ready and self:isComic() then
+        Grid:onPageUpdate(pageno)
         AutoRotate:onPageUpdate(self.ui.document, pageno)
         PageSplit:onPageUpdate(self.ui.document, pageno)
     end

@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        koreader: [v2026.03, v2026.07]
+        koreader: [v2026.03, v2026.07.1]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4

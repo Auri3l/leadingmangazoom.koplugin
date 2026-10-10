@@ -56,6 +56,20 @@ function Menu:build(plugin, Grid, AutoRotate, PageSplit, Settings)
                 end,
             },
             {
+                text = _("Swipe/tap to move between quadrants"),
+                checked_func = function() return Grid.navigation_enabled end,
+                callback = function()
+                    local enabled = Grid:toggleNavigation()
+                    self_menu:showMessage(enabled
+                        and "Quadrant navigation ON\nSwipe, tap the left/right side\nor use page buttons to move"
+                        or "Quadrant navigation OFF\nTap anywhere to return to the page")
+                end,
+                hold_callback = function()
+                    Settings:set("grid_navigation_enabled", Grid.navigation_enabled)
+                    self_menu:showMessage("Quadrant navigation default: " .. (Grid.navigation_enabled and "ON" or "OFF"))
+                end,
+            },
+            {
                 text = _("Enable Page Zoom"),
                 checked_func = function() return Grid.page_zoom_enabled end,
                 callback = function()
@@ -156,7 +170,9 @@ function Menu:build(plugin, Grid, AutoRotate, PageSplit, Settings)
                     self_menu:showMessage(
                         "Leading Manga Zoom\n\n" ..
                         "2-FINGER TAP to zoom quadrant.\n" ..
-                        "TAP to return.\n" ..
+                        "SWIPE or TAP the sides to move\n" ..
+                        "between quadrants.\n" ..
+                        "TAP the middle to return.\n" ..
                         "Auto-rotates landscape pages.\n" ..
                         "Split landscape into two pages.\n\n" ..
                         "Hold option to set as default.\n\n" ..

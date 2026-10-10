@@ -298,6 +298,165 @@ test("missing page dimensions do not leave a phantom zoom active", function()
     eq(grid.original_zoom_mode, nil)
 end)
 
+local function navReader(rtl, pages)
+    local ui = reader(pages or { portrait, portrait, portrait })
+    local grid = dofile(root .. "grid.lua")
+    grid:init(ui, settings({ grid_enabled = true, page_zoom_enabled = true,
+        grid_rtl_enabled = rtl, grid_navigation_enabled = true }))
+    ui.onPage = function(n) grid:onPageUpdate(n) end
+    grid:setupTouchZones(function() return true end)
+    grid:installNavigation(function() return true end)
+    return grid, ui
+end
+local function tap(ui, x) return ui.zones.lmz_single_tap.handler({ pos = { x = x, y = 400 } }) end
+local function swipe(ui, direction) return ui.zones.lmz_cell_swipe.handler({ direction = direction }) end
+
+test("swipes, side taps and page buttons move between quadrants (issue #7)", function()
+    local grid, ui = navReader(false)
+    eq(swipe(ui, "west"), false, "swipe without zoom falls through")
+    grid:expand(1)
+    eq(swipe(ui, "west"), true)
+    eq(grid.expanded_cell, 2)
+    near(ui.view.center.x, 900)
+    near(ui.view.center.y, 400)
+    eq(swipe(ui, "north"), true)
+    eq(grid.expanded_cell, 4)
+    eq(swipe(ui, "north"), true, "edge swipe keeps the zoom")
+    eq(grid.expanded_cell, 4)
+    eq(swipe(ui, "south"), true)
+    eq(grid.expanded_cell, 2)
+    eq(tap(ui, 50), true)
+    eq(grid.expanded_cell, 1)
+    eq(tap(ui, 550), true)
+    eq(grid.expanded_cell, 2)
+    ui.paging:onGotoViewRel(1, {}) -- physical page button
+    eq(grid.expanded_cell, 3)
+    ui.paging:onGotoViewRel(-1)
+    eq(grid.expanded_cell, 2)
+    eq(ui.paging.calls, 0, "quadrant steps do not turn the page")
+    eq(ui.zooming.recalculations > 0, true)
+    eq(tap(ui, 300), true, "middle tap returns to the page")
+    eq(grid.expanded_cell, nil)
+    eq(ui.zooming.zoom_mode, "page")
+    eq(ui.view.state.zoom, 1)
+    grid:reset()
+end)
+
+test("RTL quadrant order runs right to left", function()
+    local grid, ui = navReader(true)
+    grid:expand(2)
+    eq(ui.document.configurable.writing_direction, 1)
+    eq(swipe(ui, "east"), true)
+    eq(grid.expanded_cell, 1)
+    eq(tap(ui, 50), true, "left side is forward in RTL")
+    eq(grid.expanded_cell, 4)
+    ui.paging:onGotoViewRel(1)
+    eq(grid.expanded_cell, 3)
+    eq(swipe(ui, "west"), true)
+    eq(grid.expanded_cell, 4)
+    grid:collapse()
+    eq(ui.document.configurable.writing_direction, 0)
+    -- KOReader's inverse reading order also means right-to-left.
+    grid.rtl_enabled = false
+    ui.view.inverse_reading_order = true
+    grid:expand(2)
+    ui.paging:onGotoViewRel(1)
+    eq(grid.expanded_cell, 1)
+    grid:reset()
+end)
+
+test("stepping past the last quadrant continues on the next page", function()
+    local grid, ui = navReader(false)
+    grid:expand(4)
+    ui.paging:onGotoViewRel(1)
+    eq(ui.paging.current_page, 2)
+    eq(grid.expanded_cell, nil, "zoom is released for the page turn")
+    eq(ui.zooming.zoom_mode, "page")
+    flush()
+    eq(grid.expanded_cell, 1)
+    eq(grid.original_page, 2)
+    eq(grid.original_zoom_mode, "page")
+    eq(tap(ui, 50), true, "backward from the first quadrant")
+    eq(ui.paging.current_page, 1)
+    flush()
+    eq(grid.expanded_cell, 4)
+    grid:collapse()
+    -- No page left: stay on the page without zooming again.
+    ui.paging.current_page, ui.zooming.current_page = 3, 3
+    grid:expand(4)
+    eq(swipe(ui, "west"), true)
+    flush()
+    eq(ui.paging.current_page, 3)
+    eq(grid.expanded_cell, nil)
+    grid:reset()
+end)
+
+test("continuation stops on split spreads and when navigation is off", function()
+    local grid, ui = navReader(false)
+    grid.can_continue = function() return false end
+    grid:expand(4)
+    swipe(ui, "west")
+    flush()
+    eq(ui.paging.current_page, 2)
+    eq(grid.expanded_cell, nil)
+    grid.can_continue = nil
+    grid:toggleNavigation()
+    grid:expand(1)
+    eq(swipe(ui, "west"), false, "KOReader handles swipes")
+    eq(tap(ui, 550), true)
+    eq(grid.expanded_cell, nil, "any tap returns when navigation is off")
+    grid:expand(1)
+    ui.paging:onGotoViewRel(1)
+    eq(ui.paging.current_page, 3, "page buttons turn the page")
+    eq(grid.expanded_cell, nil, "page change releases the zoom")
+    grid:reset()
+end)
+
+test("page changes from elsewhere release the zoom without restoring an old pan", function()
+    local grid, ui = navReader(false)
+    ui.view.visible_area.y = 40
+    grid:expand(3)
+    ui.view.pans = 0
+    ui:handleEvent({ name = "PageUpdate", 2 })
+    eq(grid.expanded_cell, nil)
+    eq(ui.zooming.zoom_mode, "page")
+    eq(ui.view.pans, 0)
+    grid:expand(1)
+    ui:handleEvent({ name = "PageUpdate", 2 }) -- redraw of the same page
+    eq(grid.expanded_cell, 1)
+    grid:reset()
+end)
+
+test("zoom levels leave room for a visible footer", function()
+    local grid, ui = gridReader()
+    ui.view.footer_visible = true
+    ui.view.footer = { settings = {}, getHeight = function() return 40 end }
+    grid:expand(1)
+    near(ui.zooming.zoom, 1.9)
+    grid:collapse()
+    ui.view.footer.settings.reclaim_height = true
+    grid:expand(1)
+    near(ui.zooming.zoom, 2)
+    grid:reset()
+end)
+
+test("navigation wrappers unwind in order on close", function()
+    local ui = reader({ landscape, portrait })
+    local grid = dofile(root .. "grid.lua")
+    grid:init(ui, settings({ grid_enabled = true, grid_navigation_enabled = true }))
+    local split = dofile(root .. "pagesplit.lua")
+    split:init(ui, settings({ pagesplit_enabled = true }), grid, function() return true end)
+    local original = ui.paging.onGotoViewRel
+    split:installNavigation()
+    local split_wrapper = ui.paging.onGotoViewRel
+    grid:installNavigation(function() return true end)
+    assert(ui.paging.onGotoViewRel ~= split_wrapper)
+    grid:reset()
+    eq(ui.paging.onGotoViewRel, split_wrapper)
+    split:reset()
+    eq(ui.paging.onGotoViewRel, original)
+end)
+
 test("LTR split traverses halves, pages, portrait exit and backward re-entry", function()
     local split, ui = splitReader(false)
     eq(split.current_half, "left")
@@ -443,6 +602,40 @@ if koreader then
         grid.enabled, grid.page_zoom_enabled = false, false
         gesture("spread"); gesture("two_finger_tap"); gesture("tap"); gesture("pinch")
         eq(builtin_calls, 4)
+    end)
+
+    test("real KOReader dispatch: quadrant swipes yield to menu swipes", function()
+        local input_container = dofile(koreader .. "/frontend/ui/widget/container/inputcontainer.lua")
+        local geom = package.loaded["ui/geometry"]
+        local grid, ui = navReader(false)
+        ui._zones, ui._ordered_touch_zones, ui.ges_events, ui.touch_zone_dg = {}, {}, {}, nil
+        ui.registerTouchZones = input_container.registerTouchZones
+        local calls = {}
+        local function builtin(id, zone, overrides)
+            ui:registerTouchZones({ {
+                id = id, ges = "swipe", screen_zone = zone, overrides = overrides,
+                handler = function() calls[#calls + 1] = id; return true end,
+            } })
+        end
+        builtin("paging_swipe", { ratio_x = 0, ratio_y = 0, ratio_w = 1, ratio_h = 1 })
+        builtin("readermenu_swipe", { ratio_x = 0, ratio_y = 0, ratio_w = 1, ratio_h = 1 / 8 },
+            { "paging_swipe" })
+        grid:setupTouchZones(function() return true end)
+        local function swipe_at(y)
+            return input_container.onGesture(ui, {
+                ges = "swipe", direction = "west", pos = geom:new{ x = 300, y = y },
+            })
+        end
+        eq(swipe_at(400), true)
+        eq(calls[1], "paging_swipe", "unzoomed swipes still turn pages")
+        grid:expand(1)
+        eq(swipe_at(400), true)
+        eq(grid.expanded_cell, 2)
+        eq(#calls, 1)
+        eq(swipe_at(20), true)
+        eq(calls[2], "readermenu_swipe")
+        eq(grid.expanded_cell, 2)
+        grid:reset()
     end)
 end
 
