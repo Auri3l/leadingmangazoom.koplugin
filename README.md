@@ -9,6 +9,7 @@ A powerful KOReader plugin designed for reading manga and comics. It features a 
 ## 🚀 Features
 
 - **Quadrant Zoom**: Two-finger tap anywhere to instantly zoom into that quadrant.
+- **Quadrant Navigation**: While zoomed, swipe, tap the left/right side of the screen or press the page buttons to move to the next quadrant, continuing onto the next page.
 - **Gesture Scaling**: Spread to zoom into a custom area, or pinch to zoom back out.
 - **RTL Support**: Toggle Right-to-Left reading direction for authentic manga navigation.
 - **Landscape Handling**: 
@@ -35,9 +36,14 @@ A powerful KOReader plugin designed for reading manga and comics. It features a 
 
 1. **Open a Supported Document**: Open any compatible comic archive or PDF.
 2. **Two-Finger Tap**: Tap on any of the 4 quadrants of the screen to zoom in.
-3. **Single Tap**: Tap anywhere while zoomed in to return to the full-page view.
-4. **Pinch & Spread**: Use standard multi-touch gestures for free zooming.
-5. **Manage Settings**: Access the **Leading Manga Zoom** menu from the main KOReader menu.
+3. **Move Between Quadrants**: While zoomed in:
+    - **Swipe** left/right to go to the next/previous quadrant in reading order, or up/down to go to the quadrant below/above.
+    - **Tap** the left or right third of the screen to go back or forward (mirrored in RTL mode).
+    - **Page buttons** step through quadrants too. Going past the last quadrant turns the page and zooms into the first quadrant of the next page.
+    - Turn this off with **Swipe/tap to move between quadrants** in the menu.
+4. **Single Tap**: Tap the middle of the screen while zoomed in to return to the full-page view (anywhere, if quadrant navigation is off).
+5. **Pinch & Spread**: Use standard multi-touch gestures for free zooming.
+6. **Manage Settings**: Access the **Leading Manga Zoom** menu from the main KOReader menu.
     - *Tip: Hold any menu option to set it as the default for all future books.*
 
 ---
@@ -72,6 +78,12 @@ LeadingMangaZoom is optimized for **fixed-layout** documents. It supports:
 - Auto-rotate logic inspired by [koreader-autorotate](https://github.com/Extraltodeus/koreader-autorotate) by [@Extraltodeus](https://github.com/Extraltodeus)
 
 ## 📅 Changelog
+
+### v1.2.0 (2026-10-10)
+- **Quadrant navigation** ([#7](https://github.com/Auri3l/leadingmangazoom.koplugin/issues/7)): swipe, tap the screen sides or use page buttons to move between zoomed quadrants without zooming out. Reading order follows RTL mode, the document's writing direction and KOReader's inverse reading order. Past the last quadrant, the page turns and the first quadrant of the next page is zoomed (not on split spreads). Can be turned off from the menu.
+- Page changes made while zoomed (go to page, TOC, links, page buttons with navigation off) now release the zoom, instead of carrying one page's zoom over to the next and restoring a stale pan position later.
+- Zoom levels now account for a visible status bar, like KOReader's own zoom modes, so quadrants are no longer cropped at the bottom.
+- Tested against KOReader v2026.03 and v2026.07.1.
 
 ### v1.1.2 (2026-09-06)
 - Load plugin modules by their own paths to avoid crashes and duplicate menus when Maximum or another plugin uses the same module names.
