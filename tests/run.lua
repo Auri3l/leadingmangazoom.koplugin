@@ -554,6 +554,110 @@ test("auto-rotation preserves the physical-button fix and restores missing mappi
     eq(input.rotation_map[3].RPgFwd, nil)
 end)
 
+-- Free page zoom for newspapers and magazines (Euphoriyy/KOReader.patches#26).
+local function freeReader()
+    local grid, ui = gridReader()
+    -- PanningUpdate clamps to the page like ReaderView's offsetWithin.
+    ui.view.PanningUpdate = function(self, dx, dy)
+        local a, p = self.visible_area, self.page_area
+        a.x = math.max(0, math.min(a.x + dx, p.w - a.w))
+        a.y = math.max(0, math.min(a.y + dy, p.h - a.h))
+        self.pans = (self.pans or 0) + 1
+    end
+    grid:setupTouchZones(function() return true end)
+    return grid, ui
+end
+local function spread(span, x, y)
+    return { pos = { x = x or 300, y = y or 400 }, start_span = 100, span = span }
+end
+
+test("spread zooms by finger distance and repeats up to a ceiling", function()
+    local grid, ui = freeReader()
+    eq(ui.zones.lmz_page_spread.handler(spread(300)), true)
+    eq(grid.expanded_cell, 0)
+    near(ui.view.state.zoom, 3)
+    eq(ui.zones.lmz_page_spread.handler(spread(200)), true)
+    near(ui.view.state.zoom, 6)
+    ui.zones.lmz_page_spread.handler(spread(500))
+    near(ui.view.state.zoom, 8, "zoom is capped at 8x the fitted page")
+    -- A barely-open spread still zooms noticeably on the first gesture.
+    grid:collapse()
+    ui.zones.lmz_page_spread.handler(spread(105))
+    near(ui.view.state.zoom, 1.25)
+end)
+
+test("pinch zooms out step by step and returns to the page near fit", function()
+    local grid, ui = freeReader()
+    ui.zones.lmz_page_spread.handler(spread(400))
+    eq(ui.zones.lmz_page_pinch.handler(spread(50)), true)
+    near(ui.view.state.zoom, 2)
+    eq(grid.expanded_cell, 0)
+    ui.zones.lmz_page_pinch.handler(spread(40))
+    eq(grid.expanded_cell, nil)
+    eq(ui.zooming.zoom_mode, "page")
+    near(ui.view.state.zoom, 1)
+end)
+
+test("drags pan the zoomed page freely in both axes on release", function()
+    local grid, ui = freeReader()
+    ui.zones.lmz_page_spread.handler(spread(400, 0, 0))
+    ui.view.visible_area.x, ui.view.visible_area.y = 600, 800
+    local pans = ui.view.pans or 0
+    -- Pan events only record the drag; nothing redraws until release.
+    eq(ui.zones.lmz_page_pan.handler({ relative = { x = -100, y = 0 } }), true)
+    eq(ui.zones.lmz_page_pan.handler({ relative = { x = -150, y = -200 } }), true)
+    eq(ui.view.pans or 0, pans)
+    eq(ui.zones.lmz_page_pan_release.handler({}), true)
+    eq(ui.view.visible_area.x, 750)
+    eq(ui.view.visible_area.y, 1000)
+    -- Direction changes keep the position instead of jumping to a corner.
+    ui.zones.lmz_page_pan.handler({ relative = { x = 50, y = 120 } })
+    ui.zones.lmz_page_pan_release.handler({})
+    eq(ui.view.visible_area.x, 700)
+    eq(ui.view.visible_area.y, 880)
+    eq(ui.zooming.zoom_mode, "free")
+    eq(ui.paging.current_page, 1)
+end)
+
+test("swipes pan a free page zoom instead of stepping or turning pages", function()
+    local grid, ui = freeReader()
+    ui.zones.lmz_page_spread.handler(spread(400, 0, 0))
+    ui.view.visible_area.x, ui.view.visible_area.y = 600, 800
+    local calls = ui.paging.calls
+    ui.zones.lmz_page_pan.handler({ relative = { x = -10, y = 0 } })
+    eq(ui.zones.lmz_cell_swipe.handler({
+        direction = "northwest", pos = { x = 500, y = 600 }, end_pos = { x = 200, y = 200 },
+    }), true)
+    eq(ui.view.visible_area.x, 900)
+    eq(ui.view.visible_area.y, 1200)
+    eq(ui.paging.calls, calls)
+    eq(grid.pan_delta, nil, "a swipe discards the drag that preceded it")
+    eq(ui.zones.lmz_page_pan_release.handler({}), false)
+end)
+
+test("pans fall through outside free page zoom", function()
+    local grid, ui = freeReader()
+    eq(ui.zones.lmz_page_pan.handler({ relative = { x = 10, y = 10 } }), false)
+    eq(ui.zones.lmz_page_pan_release.handler({}), false)
+    grid:expand(1)
+    eq(ui.zones.lmz_page_pan.handler({ relative = { x = 10, y = 10 } }), false)
+    eq(ui.zones.lmz_page_pan.overrides[1], "paging_pan")
+    eq(ui.zones.lmz_page_pan_release.overrides[1], "paging_pan_release")
+end)
+
+test("spread on a quadrant switches to free zoom and still restores the page", function()
+    local grid, ui = freeReader()
+    ui.zooming.zoom_mode, ui.zooming.zoom, ui.view.state.zoom = "free", 1.3, 1.3
+    grid:expand(2)
+    near(ui.view.state.zoom, 2)
+    eq(ui.zones.lmz_page_spread.handler(spread(150)), true)
+    eq(grid.expanded_cell, 0)
+    near(ui.view.state.zoom, 3)
+    grid:collapse()
+    near(ui.view.state.zoom, 1.3)
+    eq(ui.zooming.zoom_mode, "free")
+end)
+
 -- Optional integration test against an unmodified KOReader checkout. The
 -- touch-zone graph, geometry, gesture matching and dispatch are real code.
 local koreader = os.getenv("KOREADER_SOURCE")
