@@ -704,6 +704,30 @@ test("choosing a zoom mode while zoomed ends the zoom without overriding it", fu
     grid:onZoomModeUpdate("page")
 end)
 
+test("closing or autosaving while zoomed keeps the reader's zoom mode", function()
+    saved = {}
+    local plugin_class = dofile(root .. "main.lua")
+    local ui = reader({ portrait })
+    local doc = {}
+    ui.doc_settings = { saveSetting = function(_, k, v) doc[k] = v end }
+    local plugin = setmetatable({ ui = ui }, plugin_class)
+    plugin:init()
+    plugin:onReaderReady()
+    for _, fn in ipairs(ui.post) do fn() end
+    ui.zooming.zoom_mode = "contentwidth"
+    -- ReaderZooming saves first, then the plugin.
+    doc.zoom_mode = ui.zooming.zoom_mode
+    plugin:onSaveSettings()
+    eq(doc.zoom_mode, "contentwidth", "nothing changes when not zoomed")
+    ui.zones.lmz_2tap_q1.handler()
+    doc.zoom_mode = ui.zooming.zoom_mode
+    eq(doc.zoom_mode, "free")
+    plugin:onSaveSettings()
+    eq(doc.zoom_mode, "contentwidth")
+    plugin:onCloseDocument()
+    eq(ui.zooming.zoom_mode, "contentwidth")
+end)
+
 -- Optional integration test against an unmodified KOReader checkout. The
 -- touch-zone graph, geometry, gesture matching and dispatch are real code.
 local koreader = os.getenv("KOREADER_SOURCE")
@@ -818,6 +842,35 @@ if koreader then
         eq(#calls, 1)
         eq(ui.view.visible_area.x, x - 100)
         eq(ui.view.visible_area.y, y + 100)
+        grid:reset()
+    end)
+    test("real KOReader dispatch: quadrant swipes go before ReaderLink's swipe", function()
+        local input_container = dofile(koreader .. "/frontend/ui/widget/container/inputcontainer.lua")
+        local geom = package.loaded["ui/geometry"]
+        local grid, ui = navReader(false)
+        ui._zones, ui._ordered_touch_zones, ui.ges_events, ui.touch_zone_dg = {}, {}, {}, nil
+        ui.registerTouchZones = input_container.registerTouchZones
+        local calls = {}
+        for _, spec in ipairs({ { "paging_swipe" }, { "swipe_link", { "paging_swipe", "rolling_swipe" } } }) do
+            ui:registerTouchZones({ {
+                id = spec[1], ges = "swipe", overrides = spec[2],
+                screen_zone = { ratio_x = 0, ratio_y = 0, ratio_w = 1, ratio_h = 1 },
+                -- Like swipe-to-go-back with a non-empty location history.
+                handler = function() calls[#calls + 1] = spec[1]; return true end,
+            } })
+        end
+        grid:setupTouchZones(function() return true end)
+        local function swipe_dir(direction)
+            return input_container.onGesture(ui, {
+                ges = "swipe", direction = direction, pos = geom:new{ x = 300, y = 400 },
+            })
+        end
+        eq(swipe_dir("east"), true)
+        eq(calls[1], "swipe_link", "unzoomed swipes keep link navigation")
+        grid:expand(2)
+        eq(swipe_dir("east"), true)
+        eq(grid.expanded_cell, 1)
+        eq(#calls, 1)
         grid:reset()
     end)
 end
