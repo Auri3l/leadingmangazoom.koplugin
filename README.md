@@ -2,7 +2,10 @@
 
 > Forked from [Maximum](https://github.com/Shac0x/maximum.koplugin) by [@Shac0x](https://github.com/Shac0x)
 
-A powerful KOReader plugin designed for reading manga and comics. It features a smart quadrant-based zoom system, allowing you to navigate dense manga pages with ease.
+A KOReader plugin for reading fixed-layout pages up close: manga and comics, but also newspapers, magazines and textbook PDFs.
+
+- **Manga & comics:** two-finger tap a quadrant to zoom into it, then swipe or tap through the quadrants in reading order (RTL supported).
+- **Newspapers & magazines:** spread to zoom freely, drag in any direction to read across columns and articles, pinch to zoom back out.
 
 ---
 
@@ -10,7 +13,8 @@ A powerful KOReader plugin designed for reading manga and comics. It features a 
 
 - **Quadrant Zoom**: Two-finger tap anywhere to instantly zoom into that quadrant.
 - **Quadrant Navigation**: While zoomed, swipe, tap the left/right side of the screen or press the page buttons to move to the next quadrant, continuing onto the next page.
-- **Free Zoom**: Spread to zoom in as far as you like (repeat to go further), drag or swipe to pan in any direction, pinch to zoom back out. Works for newspapers, magazines and textbooks as well as manga.
+- **Free Zoom**: Spread to zoom in as far as you like (repeat to go further), drag or swipe to pan in any direction (diagonals included), pinch to zoom back out. Made for newspapers, magazines and textbooks, and handy for manga too.
+- **E-ink Friendly**: Panning redraws once when you lift your finger, so the screen doesn't flash while you move around.
 - **RTL Support**: Toggle Right-to-Left reading direction for authentic manga navigation.
 - **Landscape Handling**: 
     - **Auto-rotate**: Automatically rotates double-wide pages to fill your screen.
@@ -44,11 +48,24 @@ A powerful KOReader plugin designed for reading manga and comics. It features a 
 4. **Single Tap**: Tap the middle of the screen while zoomed in to return to the full-page view (anywhere, if quadrant navigation is off).
 5. **Free Zoom (newspapers, magazines, textbooks)**:
     - **Spread** zooms in on the spot between your fingers; the wider you spread, the more it zooms. Spread again to zoom further (up to 8× the fitted page). Spreading on a zoomed quadrant switches to free zoom.
-    - **Drag** with one finger to move around the page in any direction; the screen redraws once when you lift your finger. A quick **swipe** pans the same way.
+    - **Drag** with one finger to move around the page in any direction; the screen redraws once when you lift your finger. A quick **swipe** pans the same way, in any direction including diagonals, so you can jump straight to the next article.
     - **Pinch** zooms out step by step; pinch back to about full-page size to return to the page view. A **tap** also returns to the page view.
-    - Spread/Pinch actions from KOReader's *Gesture manager* keep working for reflowable books, and for PDFs whenever you're not zoomed in.
-6. **Manage Settings**: Access the **Leading Manga Zoom** menu from the main KOReader menu.
+6. **Zoom modes**: Picking a zoom mode from KOReader's bottom menu while zoomed in switches straight to that mode.
+7. **Manage Settings**: Access the **Leading Manga Zoom** menu from the main KOReader menu.
     - *Tip: Hold any menu option to set it as the default for all future books.*
+
+### Gestures you've already set up
+
+You don't need to change KOReader's *Gesture manager*. On supported documents the plugin goes first only while it has something to do, and otherwise lets your own actions run:
+
+| Gesture | Plugin uses it | Otherwise |
+|---|---|---|
+| Spread | Zoom in (when Page Zoom is on) | Your action |
+| Pinch | Zoom out, while zoomed in | Your action |
+| Drag / swipe / short diagonal swipe | Pan (free zoom) or move between quadrants, while zoomed in | Page turns or your action |
+| Two-finger tap | Quadrant zoom (when Grid is on) | Your action |
+
+Reflowable books (EPUB, MOBI, PDFs with Reflow on) are never touched, so font-size gestures and the like keep working there.
 
 ---
 
@@ -69,10 +86,15 @@ LeadingMangaZoom is optimized for **fixed-layout** documents. It supports:
 
 ## 📥 Installation
 
-1. Download the latest release or clone this repo.
-2. Copy the `leadingmangazoom.koplugin` folder into your KOReader's `plugins/` directory.
-3. Restart KOReader.
-4. Ensure **Reflow** is disabled for the document (as it converts images to reflowable blocks).
+1. Download **leadingmangazoom.koplugin.zip** from the [latest release](https://github.com/Auri3l/leadingmangazoom.koplugin/releases/latest).
+2. Extract it into KOReader's `plugins/` folder, replacing any older copy. You should end up with `plugins/leadingmangazoom.koplugin/main.lua`, not a folder inside a folder.
+    - **Kobo / Kindle / PocketBook:** `koreader/plugins/` on the device.
+    - **Android:** `koreader/plugins/` in internal storage (or wherever your KOReader data folder is).
+3. Restart KOReader. The plugin appears as **Leading Manga Zoom** in the main menu and in *Plugin management*.
+4. Make sure **Reflow** is off for the document.
+
+> [!TIP]
+> Downloading the source code zip from GitHub instead gives you an extra outer folder (`leadingmangazoom.koplugin-master/`). Copy only the inner `leadingmangazoom.koplugin` folder, or the plugin won't show up.
 
 ---
 
@@ -80,11 +102,29 @@ LeadingMangaZoom is optimized for **fixed-layout** documents. It supports:
 
 - Based on [maximum.koplugin](https://github.com/Shac0x/maximum.koplugin) by [@Shac0x](https://github.com/Shac0x)
 - Auto-rotate logic inspired by [koreader-autorotate](https://github.com/Extraltodeus/koreader-autorotate) by [@Extraltodeus](https://github.com/Extraltodeus)
+- Free zoom requested and tested by [@shuvashish76](https://github.com/shuvashish76), with thanks to [@Euphoriyy](https://github.com/Euphoriyy) ([KOReader.patches#26](https://github.com/Euphoriyy/KOReader.patches/issues/26))
+
+## 🧪 Developer checks
+
+From the repository root, run `luajit tests/run.lua` or `lua5.1 tests/run.lua`.
+The tests use small KOReader doubles; they do not replace validation on an e-reader.
+To also exercise KOReader's real touch-zone ordering and gesture dispatch, run
+`KOREADER_SOURCE=/path/to/koreader luajit tests/run.lua`.
+
+Device checks before release: with Reflow disabled, try two-finger tap, spread,
+pinch and tap-to-collapse; enable splitting on an already-open landscape page;
+navigate both ways through consecutive spreads in LTR and RTL, using touch and
+physical buttons; disable splitting and check that the previous view returns.
+Maximum can remain installed, but enable only one plugin's overlapping gesture
+features at a time if both are configured to handle the same gesture.
+
+---
 
 ## 📅 Changelog
 
-### v1.3.0 (2026-10-14)
+### v1.3.0 (2026-10-15)
 - **Free zoom for newspapers and magazines** ([Euphoriyy/KOReader.patches#26](https://github.com/Euphoriyy/KOReader.patches/issues/26)): spread zooms by how far your fingers move instead of a fixed 2×, and can be repeated; pinch zooms out step by step. One-finger drags and swipes now pan freely in both directions, instead of KOReader's guided stepping that jumped back to a page corner whenever the direction changed. Panning redraws once on release to avoid e-ink flashing.
+- Gesture manager actions keep working: the plugin only claims spread, pinch, drags and swipes while it is using them, so there's no need to set them to *Pass through*.
 - Free zoom is capped at 8× the fitted page so very large pages (broadsheet PDFs) do not request oversized renders.
 - Diagonal swipes pan diagonally while zoomed, including short ones that KOReader's Gestures plugin would otherwise treat as its "short diagonal swipe".
 - Fix a crash when opening the zoom tab of the bottom menu while zoomed (`koptoptions.lua: attempt to compare nil with number`). Picking a zoom mode there while zoomed now simply switches to it.
@@ -103,20 +143,6 @@ LeadingMangaZoom is optimized for **fixed-layout** documents. It supports:
 - Cancel stale split-page pans on navigation, disabling or closing; preserve the selected half on redraw.
 - Restore previous zoom, pan, reading direction and continuous-view state after temporary zooming, and account for screen margins in spread coordinates.
 - Preserve the v1.1.1 physical-button fix and let KOReader update its layout when restoring portrait orientation.
-
-### Developer checks
-
-From the repository root, run `luajit tests/run.lua` or `lua5.1 tests/run.lua`.
-The tests use small KOReader doubles; they do not replace validation on an e-reader.
-To also exercise KOReader's real touch-zone ordering and gesture dispatch, run
-`KOREADER_SOURCE=/path/to/koreader luajit tests/run.lua`.
-
-Device checks before release: with Reflow disabled, try two-finger tap, spread,
-pinch and tap-to-collapse; enable splitting on an already-open landscape page;
-navigate both ways through consecutive spreads in LTR and RTL, using touch and
-physical buttons; disable splitting and check that the previous view returns.
-Maximum can remain installed, but enable only one plugin's overlapping gesture
-features at a time if both are configured to handle the same gesture.
 
 ### v1.1.1 (2026-07-25)
 - **Fixed Physical Button Remapping Issue**: Resolved a bug on devices with physical page-turn buttons (e.g. Kobo Sage, Kobo Libra 2, Kobo Forma, PocketBook, Kindle Oasis) where auto-rotating landscape pages caused physical buttons to invert and kick the user back to the previous page.
