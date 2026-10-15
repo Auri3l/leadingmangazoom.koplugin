@@ -122,6 +122,10 @@ features at a time if both are configured to handle the same gesture.
 
 ## 📅 Changelog
 
+### v1.3.1 (2026-10-15)
+- Quadrant swipes now take priority over KOReader's link swipes while zoomed in. With *swipe to go back* or *swipe to follow nearest link* turned on, those swipes used to leave the quadrant instead of moving to the next one.
+- Closing a book while zoomed in no longer replaces its zoom mode with the temporary free zoom.
+
 ### v1.3.0 (2026-10-15)
 - **Free zoom for newspapers and magazines** ([Euphoriyy/KOReader.patches#26](https://github.com/Euphoriyy/KOReader.patches/issues/26)): spread zooms by how far your fingers move instead of a fixed 2×, and can be repeated; pinch zooms out step by step. One-finger drags and swipes now pan freely in both directions, instead of KOReader's guided stepping that jumped back to a page corner whenever the direction changed. Panning redraws once on release to avoid e-ink flashing.
 - Gesture manager actions keep working: the plugin only claims spread, pinch, drags and swipes while it is using them, so there's no need to set them to *Pass through*.

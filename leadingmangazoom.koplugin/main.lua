@@ -71,6 +71,14 @@ function LeadingMangaZoom:onPageUpdate(pageno)
     end
 end
 
+-- Runs after ReaderZooming saved "free", our temporary mode.
+function LeadingMangaZoom:onSaveSettings()
+    local mode = self.ready and Grid:savedZoomMode()
+    if mode and self.ui.doc_settings then
+        self.ui.doc_settings:saveSetting("zoom_mode", mode)
+    end
+end
+
 function LeadingMangaZoom:onZoomModeUpdate(new_mode)
     if self.ready then Grid:onZoomModeUpdate(new_mode) end
 end

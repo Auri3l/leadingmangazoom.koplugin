@@ -139,9 +139,11 @@ function Grid:setupTouchZones(is_supported)
     zones[#zones + 1] = {
         id = "lmz_cell_swipe",
         ges = "swipe",
-        -- The Gestures plugin's short diagonal swipe (frontlight by default)
-        -- would otherwise take short diagonal swipes while zoomed.
-        overrides = { "paging_swipe", "short_diagonal_swipe" },
+        -- While zoomed, also go before swipes that would otherwise win:
+        -- the Gestures plugin's short diagonal swipe (frontlight by default)
+        -- and ReaderLink's swipe (swipe back / follow nearest link, when
+        -- enabled in KOReader's settings).
+        overrides = { "paging_swipe", "short_diagonal_swipe", "swipe_link" },
         screen_zone = { ratio_x = 0, ratio_y = 0, ratio_w = 1, ratio_h = 1 },
         handler = function(ges)
             if not is_supported() then return false end
@@ -290,6 +292,14 @@ function Grid:syncConfigurable()
     if genus == nil then genus, ztype = zooming:mode_to_combo(nil) end
     configurable.zoom_mode_genus = genus
     configurable.zoom_mode_type = ztype
+end
+
+-- The zoom mode to keep in the book's settings while zoomed in, so a book
+-- closed (or autosaved) mid-zoom reopens in the reader's own zoom mode.
+function Grid:savedZoomMode()
+    if self.expanded_cell and self.original_zoom_mode then
+        return self.original_zoom_mode
+    end
 end
 
 -- Choosing a zoom mode elsewhere (bottom menu, gestures, keys) while zoomed
