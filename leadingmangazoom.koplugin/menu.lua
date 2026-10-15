@@ -173,6 +173,8 @@ function Menu:build(plugin, Grid, AutoRotate, PageSplit, Settings)
                         "SWIPE or TAP the sides to move\n" ..
                         "between quadrants.\n" ..
                         "TAP the middle to return.\n" ..
+                        "SPREAD to zoom freely, DRAG\n" ..
+                        "to pan, PINCH to zoom out.\n" ..
                         "Auto-rotates landscape pages.\n" ..
                         "Split landscape into two pages.\n\n" ..
                         "Hold option to set as default.\n\n" ..

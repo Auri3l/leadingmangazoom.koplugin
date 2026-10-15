@@ -26,6 +26,16 @@ local QUADRANTS = {
     { id = "lmz_2tap_q4", x = 0.5, y = 0.5, w = 0.5, h = 0.5 },
 }
 
+-- Free page zoom limits, relative to the zoom that fits the whole page.
+-- The ceiling keeps very large pages (broadsheet newspapers) from asking the
+-- renderer for enormous tiles.
+local MAX_ZOOM_FACTOR = 8
+local MIN_SPREAD_FACTOR = 1.25
+-- Zoom used when a gesture carries no finger spans (keys, older devices).
+local DEFAULT_SPREAD_FACTOR = 2
+-- Pinching to within this much of the fitted page returns to the page view.
+local COLLAPSE_FACTOR = 1.05
+
 -- Quadrant reading order: rows top to bottom, columns by reading direction.
 local LTR_ORDER = { 1, 2, 3, 4 }
 local RTL_ORDER = { 2, 1, 4, 3 }
@@ -50,6 +60,7 @@ function Grid:clearState()
     self.original_scroll = nil
     self.original_config_scroll = nil
     self.original_page = nil
+    self.pan_delta = nil
 end
 
 function Grid:cancelExpand()
@@ -128,7 +139,9 @@ function Grid:setupTouchZones(is_supported)
     zones[#zones + 1] = {
         id = "lmz_cell_swipe",
         ges = "swipe",
-        overrides = { "paging_swipe" },
+        -- The Gestures plugin's short diagonal swipe (frontlight by default)
+        -- would otherwise take short diagonal swipes while zoomed.
+        overrides = { "paging_swipe", "short_diagonal_swipe" },
         screen_zone = { ratio_x = 0, ratio_y = 0, ratio_w = 1, ratio_h = 1 },
         handler = function(ges)
             if not is_supported() then return false end
@@ -142,8 +155,9 @@ function Grid:setupTouchZones(is_supported)
         overrides = { "spread_gesture" },
         screen_zone = { ratio_x = 0, ratio_y = 0, ratio_w = 1, ratio_h = 1 },
         handler = function(ges)
-            if is_supported() and self.page_zoom_enabled and not self.expanded_cell then
-                return self:expandPage(ges)
+            if is_supported() and self.page_zoom_enabled then
+                if not self.expanded_cell then return self:expandPage(ges) end
+                return self:zoomBy(self:gestureFactor(ges), ges)
             end
             return false
         end,
@@ -154,10 +168,40 @@ function Grid:setupTouchZones(is_supported)
         ges = "pinch",
         overrides = { "pinch_gesture" },
         screen_zone = { ratio_x = 0, ratio_y = 0, ratio_w = 1, ratio_h = 1 },
-        handler = function()
+        handler = function(ges)
             if is_supported() and self.expanded_cell then
-                self:collapse()
+                return self:onPinch(ges)
+            end
+            return false
+        end,
+    }
+
+    -- One-finger drags pan a free page zoom in any direction. The pan is
+    -- applied once on release, so e-ink screens redraw a single time.
+    zones[#zones + 1] = {
+        id = "lmz_page_pan",
+        ges = "pan",
+        overrides = { "paging_pan" },
+        screen_zone = { ratio_x = 0, ratio_y = 0, ratio_w = 1, ratio_h = 1 },
+        handler = function(ges)
+            if is_supported() and self.expanded_cell == 0 and ges and ges.relative then
+                self.pan_delta = { x = ges.relative.x, y = ges.relative.y }
                 return true
+            end
+            return false
+        end,
+    }
+
+    zones[#zones + 1] = {
+        id = "lmz_page_pan_release",
+        ges = "pan_release",
+        overrides = { "paging_pan_release" },
+        screen_zone = { ratio_x = 0, ratio_y = 0, ratio_w = 1, ratio_h = 1 },
+        handler = function()
+            if is_supported() and self.expanded_cell == 0 and self.pan_delta then
+                local delta = self.pan_delta
+                self.pan_delta = nil
+                return self:panBy(delta.x, delta.y)
             end
             return false
         end,
@@ -229,7 +273,87 @@ function Grid:setZoom(zoom, x, y)
     self.ui:handleEvent(Event:new("SetZoomMode", "free"))
     -- KOReader ignores a SetZoomMode event when the mode is unchanged.
     if was_free then zooming:setZoom() end
+    self:syncConfigurable()
     self.ui.view:SetZoomCenter(x, y)
+end
+
+-- KOReader has no zoom genus for "free", so SetZoomMode("free") leaves the
+-- configurable's zoom_mode_genus nil and the bottom menu's zoom tab crashes
+-- comparing it. Show the mode that was active before zooming instead.
+function Grid:syncConfigurable()
+    local zooming = self.ui.zooming
+    local configurable = self.ui.document and self.ui.document.configurable
+    if not configurable or type(zooming.mode_to_combo) ~= "function" then return end
+    local mode = self.original_zoom_mode
+    if mode == "free" then mode = nil end
+    local genus, ztype = zooming:mode_to_combo(mode)
+    if genus == nil then genus, ztype = zooming:mode_to_combo(nil) end
+    configurable.zoom_mode_genus = genus
+    configurable.zoom_mode_type = ztype
+end
+
+-- Choosing a zoom mode elsewhere (bottom menu, gestures, keys) while zoomed
+-- ends our zoom without overriding the newly chosen mode.
+function Grid:onZoomModeUpdate(new_mode)
+    if not self.expanded_cell or new_mode == "free" then return end
+    self:cancelExpand()
+    self.expanded_cell = nil
+    if self.original_page_turn_direction ~= nil then
+        local configurable = self.ui.document and self.ui.document.configurable
+        if configurable then
+            configurable.writing_direction = self.original_page_turn_direction.value
+        end
+    end
+    local restore_scroll = self.original_scroll
+    local config_scroll = self.original_config_scroll
+    self:clearState()
+    if restore_scroll then
+        -- Not from inside SetZoomMode's own handling; wait for it to finish.
+        UIManager:nextTick(function()
+            if self.expanded_cell or not self.ui.view or self.ui.view.page_scroll then return end
+            self.ui:handleEvent(Event:new("SetScrollMode", true))
+            if config_scroll ~= nil then self.ui.document.configurable.page_scroll = config_scroll end
+        end)
+    end
+end
+
+-- Zoom that fits the whole page in the view.
+function Grid:fitZoom(page_size)
+    local view_w, view_h = self:getViewSize()
+    return math.min(view_w / page_size.w, view_h / page_size.h)
+end
+
+-- How much a pinch or spread asks to scale by: the ratio of the finger
+-- distance at lift to the distance at touch down.
+function Grid:gestureFactor(ges)
+    if ges and ges.span and ges.start_span and ges.span > 0 and ges.start_span > 0 then
+        return ges.span / ges.start_span
+    end
+end
+
+-- Page coordinates (at the current zoom) of a screen position.
+function Grid:screenToPage(pos)
+    local view = self.ui.view
+    local vx = view.visible_area and view.visible_area.x or 0
+    local vy = view.visible_area and view.visible_area.y or 0
+    local offset = view.state.offset or { x = 0, y = 0 }
+    return vx + pos.x - offset.x, vy + pos.y - offset.y
+end
+
+-- Applies a page zoom centered on the gesture position (or the view center).
+function Grid:zoomAt(new_zoom, ges)
+    local view = self.ui.view
+    local old_zoom = view.state.zoom or 1
+    local x, y
+    if ges and ges.pos then
+        x, y = self:screenToPage(ges.pos)
+    else
+        local area = view.visible_area
+        x, y = area.x + area.w / 2, area.y + area.h / 2
+    end
+    self.expanded_cell = 0 -- 0 indicates full page zoom
+    self:setZoom(new_zoom, x * new_zoom / old_zoom, y * new_zoom / old_zoom)
+    return true
 end
 
 function Grid:expandPage(ges)
@@ -239,28 +363,62 @@ function Grid:expandPage(ges)
     local page_size = self:getPageSize()
     if not page_size then return false end
 
-    -- Zoom to twice the page-fit size (a generous zoom for reading)
-    local view_w, view_h = self:getViewSize()
-    local new_zoom = math.min(view_w / page_size.w, view_h / page_size.h) * 2
+    local fit = self:fitZoom(page_size)
+    local factor = self:gestureFactor(ges)
+    factor = factor and math.max(factor, MIN_SPREAD_FACTOR) or DEFAULT_SPREAD_FACTOR
+    local new_zoom = math.min(fit * factor, fit * MAX_ZOOM_FACTOR)
 
-    -- Determine center point from gesture or default to page center
-    local center_x, center_y
-    if ges and ges.pos then
-        -- Convert screen position to page coordinates, then scale to new zoom
-        local old_zoom = view.state.zoom or 1
-        local vx = view.visible_area and view.visible_area.x or 0
-        local vy = view.visible_area and view.visible_area.y or 0
-        local offset = view.state.offset or { x = 0, y = 0 }
-        center_x = (vx + ges.pos.x - offset.x) * new_zoom / old_zoom
-        center_y = (vy + ges.pos.y - offset.y) * new_zoom / old_zoom
-    else
-        center_x = page_size.w * new_zoom / 2
-        center_y = page_size.h * new_zoom / 2
+    if not (ges and ges.pos) then
+        -- No gesture position: zoom on the middle of the page.
+        self:saveView()
+        self.expanded_cell = 0
+        self:setZoom(new_zoom, page_size.w * new_zoom / 2, page_size.h * new_zoom / 2)
+        return true
     end
-
+    -- Read coordinates before saveView, which may leave continuous view.
+    local x, y = self:screenToPage(ges.pos)
+    local old_zoom = view.state.zoom or 1
     self:saveView()
-    self.expanded_cell = 0 -- 0 indicates full page zoom
-    self:setZoom(new_zoom, center_x, center_y)
+    self.expanded_cell = 0
+    self:setZoom(new_zoom, x * new_zoom / old_zoom, y * new_zoom / old_zoom)
+    return true
+end
+
+-- Rescales an active zoom. From a quadrant this switches to free page zoom,
+-- keeping the view saved when the quadrant was entered.
+function Grid:zoomBy(factor, ges)
+    if not self.expanded_cell then return false end
+    local page_size = self:getPageSize()
+    if not page_size then return true end
+    local fit = self:fitZoom(page_size)
+    local old_zoom = self.ui.view.state.zoom or fit
+    local new_zoom = old_zoom * (factor or DEFAULT_SPREAD_FACTOR)
+    new_zoom = math.min(new_zoom, fit * MAX_ZOOM_FACTOR)
+    if new_zoom <= fit * COLLAPSE_FACTOR then
+        self:collapse()
+        return true
+    end
+    if math.abs(new_zoom - old_zoom) < 0.001 and self.expanded_cell == 0 then
+        return true -- Already at the zoom limit.
+    end
+    return self:zoomAt(new_zoom, ges)
+end
+
+-- Pinching a free page zoom zooms out step by step; without finger spans, or
+-- from a quadrant, it returns to the page view.
+function Grid:onPinch(ges)
+    local factor = self:gestureFactor(ges)
+    if self.expanded_cell == 0 and factor and factor < 1 then
+        return self:zoomBy(factor, ges)
+    end
+    self:collapse()
+    return true
+end
+
+-- Moves the zoomed page so the content follows the finger.
+function Grid:panBy(dx, dy)
+    if (dx == 0 and dy == 0) or not self.ui.view then return true end
+    self.ui.view:PanningUpdate(-dx, -dy)
     return true
 end
 
@@ -423,6 +581,15 @@ function Grid:onSingleTap(ges)
 end
 
 function Grid:onSwipe(ges)
+    if self.expanded_cell == 0 and ges then
+        -- A drag released quickly arrives as a swipe instead of pan_release.
+        self.pan_delta = nil
+        local pos, end_pos = ges.pos, ges.end_pos
+        if pos and end_pos then
+            return self:panBy(end_pos.x - pos.x, end_pos.y - pos.y)
+        end
+        return true
+    end
     if not (self.navigation_enabled and self:isCellExpanded() and ges) then return false end
     local direction = ges.direction
     if direction == "west" or direction == "east" then

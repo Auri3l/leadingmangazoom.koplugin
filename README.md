@@ -10,7 +10,7 @@ A powerful KOReader plugin designed for reading manga and comics. It features a 
 
 - **Quadrant Zoom**: Two-finger tap anywhere to instantly zoom into that quadrant.
 - **Quadrant Navigation**: While zoomed, swipe, tap the left/right side of the screen or press the page buttons to move to the next quadrant, continuing onto the next page.
-- **Gesture Scaling**: Spread to zoom into a custom area, or pinch to zoom back out.
+- **Free Zoom**: Spread to zoom in as far as you like (repeat to go further), drag or swipe to pan in any direction, pinch to zoom back out. Works for newspapers, magazines and textbooks as well as manga.
 - **RTL Support**: Toggle Right-to-Left reading direction for authentic manga navigation.
 - **Landscape Handling**: 
     - **Auto-rotate**: Automatically rotates double-wide pages to fill your screen.
@@ -42,7 +42,11 @@ A powerful KOReader plugin designed for reading manga and comics. It features a 
     - **Page buttons** step through quadrants too. Going past the last quadrant turns the page and zooms into the first quadrant of the next page.
     - Turn this off with **Swipe/tap to move between quadrants** in the menu.
 4. **Single Tap**: Tap the middle of the screen while zoomed in to return to the full-page view (anywhere, if quadrant navigation is off).
-5. **Pinch & Spread**: Use standard multi-touch gestures for free zooming.
+5. **Free Zoom (newspapers, magazines, textbooks)**:
+    - **Spread** zooms in on the spot between your fingers; the wider you spread, the more it zooms. Spread again to zoom further (up to 8× the fitted page). Spreading on a zoomed quadrant switches to free zoom.
+    - **Drag** with one finger to move around the page in any direction; the screen redraws once when you lift your finger. A quick **swipe** pans the same way.
+    - **Pinch** zooms out step by step; pinch back to about full-page size to return to the page view. A **tap** also returns to the page view.
+    - Spread/Pinch actions from KOReader's *Gesture manager* keep working for reflowable books, and for PDFs whenever you're not zoomed in.
 6. **Manage Settings**: Access the **Leading Manga Zoom** menu from the main KOReader menu.
     - *Tip: Hold any menu option to set it as the default for all future books.*
 
@@ -78,6 +82,12 @@ LeadingMangaZoom is optimized for **fixed-layout** documents. It supports:
 - Auto-rotate logic inspired by [koreader-autorotate](https://github.com/Extraltodeus/koreader-autorotate) by [@Extraltodeus](https://github.com/Extraltodeus)
 
 ## 📅 Changelog
+
+### v1.3.0 (2026-10-14)
+- **Free zoom for newspapers and magazines** ([Euphoriyy/KOReader.patches#26](https://github.com/Euphoriyy/KOReader.patches/issues/26)): spread zooms by how far your fingers move instead of a fixed 2×, and can be repeated; pinch zooms out step by step. One-finger drags and swipes now pan freely in both directions, instead of KOReader's guided stepping that jumped back to a page corner whenever the direction changed. Panning redraws once on release to avoid e-ink flashing.
+- Free zoom is capped at 8× the fitted page so very large pages (broadsheet PDFs) do not request oversized renders.
+- Diagonal swipes pan diagonally while zoomed, including short ones that KOReader's Gestures plugin would otherwise treat as its "short diagonal swipe".
+- Fix a crash when opening the zoom tab of the bottom menu while zoomed (`koptoptions.lua: attempt to compare nil with number`). Picking a zoom mode there while zoomed now simply switches to it.
 
 ### v1.2.0 (2026-10-10)
 - **Quadrant navigation** ([#7](https://github.com/Auri3l/leadingmangazoom.koplugin/issues/7)): swipe, tap the screen sides or use page buttons to move between zoomed quadrants without zooming out. Reading order follows RTL mode, the document's writing direction and KOReader's inverse reading order. Past the last quadrant, the page turns and the first quadrant of the next page is zoomed (not on split spreads). Can be turned off from the menu.
