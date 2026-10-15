@@ -139,7 +139,9 @@ function Grid:setupTouchZones(is_supported)
     zones[#zones + 1] = {
         id = "lmz_cell_swipe",
         ges = "swipe",
-        overrides = { "paging_swipe" },
+        -- The Gestures plugin's short diagonal swipe (frontlight by default)
+        -- would otherwise take short diagonal swipes while zoomed.
+        overrides = { "paging_swipe", "short_diagonal_swipe" },
         screen_zone = { ratio_x = 0, ratio_y = 0, ratio_w = 1, ratio_h = 1 },
         handler = function(ges)
             if not is_supported() then return false end
@@ -271,7 +273,48 @@ function Grid:setZoom(zoom, x, y)
     self.ui:handleEvent(Event:new("SetZoomMode", "free"))
     -- KOReader ignores a SetZoomMode event when the mode is unchanged.
     if was_free then zooming:setZoom() end
+    self:syncConfigurable()
     self.ui.view:SetZoomCenter(x, y)
+end
+
+-- KOReader has no zoom genus for "free", so SetZoomMode("free") leaves the
+-- configurable's zoom_mode_genus nil and the bottom menu's zoom tab crashes
+-- comparing it. Show the mode that was active before zooming instead.
+function Grid:syncConfigurable()
+    local zooming = self.ui.zooming
+    local configurable = self.ui.document and self.ui.document.configurable
+    if not configurable or type(zooming.mode_to_combo) ~= "function" then return end
+    local mode = self.original_zoom_mode
+    if mode == "free" then mode = nil end
+    local genus, ztype = zooming:mode_to_combo(mode)
+    if genus == nil then genus, ztype = zooming:mode_to_combo(nil) end
+    configurable.zoom_mode_genus = genus
+    configurable.zoom_mode_type = ztype
+end
+
+-- Choosing a zoom mode elsewhere (bottom menu, gestures, keys) while zoomed
+-- ends our zoom without overriding the newly chosen mode.
+function Grid:onZoomModeUpdate(new_mode)
+    if not self.expanded_cell or new_mode == "free" then return end
+    self:cancelExpand()
+    self.expanded_cell = nil
+    if self.original_page_turn_direction ~= nil then
+        local configurable = self.ui.document and self.ui.document.configurable
+        if configurable then
+            configurable.writing_direction = self.original_page_turn_direction.value
+        end
+    end
+    local restore_scroll = self.original_scroll
+    local config_scroll = self.original_config_scroll
+    self:clearState()
+    if restore_scroll then
+        -- Not from inside SetZoomMode's own handling; wait for it to finish.
+        UIManager:nextTick(function()
+            if self.expanded_cell or not self.ui.view or self.ui.view.page_scroll then return end
+            self.ui:handleEvent(Event:new("SetScrollMode", true))
+            if config_scroll ~= nil then self.ui.document.configurable.page_scroll = config_scroll end
+        end)
+    end
 end
 
 -- Zoom that fits the whole page in the view.

@@ -658,6 +658,52 @@ test("spread on a quadrant switches to free zoom and still restores the page", f
     eq(ui.zooming.zoom_mode, "free")
 end)
 
+test("free zoom keeps the zoom menu's genus valid (koptoptions crash)", function()
+    local grid, ui = freeReader()
+    -- ReaderZooming's mapping: "free" has no genus.
+    local genus = { page = 4, content = 3, columns = 2, rows = 1, manual = 0 }
+    ui.zooming.mode_to_combo = function(_, mode)
+        mode = mode or "pagewidth"
+        local g, t = mode:match("^(page)(%l*)$")
+        if not g then g, t = mode:match("^(content)(%l*)$") end
+        g = g or mode
+        return genus[g], ({ [""] = 2, width = 1, height = 0 })[t or ""]
+    end
+    local config = ui.document.configurable
+    for _, start in ipairs({ "page", "contentwidth", "free" }) do
+        grid:collapse()
+        ui.zooming.zoom_mode = start
+        ui.zones.lmz_page_spread.handler(spread(300))
+        eq(ui.zooming.zoom_mode, "free")
+        assert(type(config.zoom_mode_genus) == "number", start .. " left a nil genus")
+        grid:expand(1)
+    end
+    grid:collapse()
+    ui.zooming.zoom_mode = "contentwidth"
+    grid:expand(3)
+    eq(config.zoom_mode_genus, 3)
+    eq(config.zoom_mode_type, 1)
+end)
+
+test("choosing a zoom mode while zoomed ends the zoom without overriding it", function()
+    local grid, ui = freeReader()
+    ui.view.page_scroll = true
+    ui.zones.lmz_page_spread.handler(spread(300))
+    grid:onZoomModeUpdate("free")
+    eq(grid.expanded_cell, 0, "our own free mode is ignored")
+    ui.zooming.zoom_mode = "pagewidth"
+    grid:onZoomModeUpdate("pagewidth")
+    eq(grid.expanded_cell, nil)
+    eq(grid.original_zoom_mode, nil)
+    flush()
+    eq(ui.view.page_scroll, true, "continuous view comes back")
+    -- Nothing is left to restore over the user's choice.
+    grid:collapse()
+    eq(ui.zooming.zoom_mode, "page")
+    eq(ui.zones.lmz_page_pan.handler({ relative = { x = 1, y = 1 } }), false)
+    grid:onZoomModeUpdate("page")
+end)
+
 -- Optional integration test against an unmodified KOReader checkout. The
 -- touch-zone graph, geometry, gesture matching and dispatch are real code.
 local koreader = os.getenv("KOREADER_SOURCE")
@@ -739,6 +785,39 @@ if koreader then
         eq(swipe_at(20), true)
         eq(calls[2], "readermenu_swipe")
         eq(grid.expanded_cell, 2)
+        grid:reset()
+    end)
+    test("real KOReader dispatch: diagonal swipes pan before the Gestures short diagonal swipe", function()
+        local input_container = dofile(koreader .. "/frontend/ui/widget/container/inputcontainer.lua")
+        local geom = package.loaded["ui/geometry"]
+        local grid, ui = gridReader()
+        ui._zones, ui._ordered_touch_zones, ui.ges_events, ui.touch_zone_dg = {}, {}, {}, nil
+        ui.registerTouchZones = input_container.registerTouchZones
+        local calls = {}
+        for _, spec in ipairs({
+            { "paging_swipe" }, { "short_diagonal_swipe", { "paging_swipe" } },
+        }) do
+            ui:registerTouchZones({ {
+                id = spec[1], ges = "swipe", overrides = spec[2],
+                screen_zone = { ratio_x = 0, ratio_y = 0, ratio_w = 1, ratio_h = 1 },
+                handler = function() calls[#calls + 1] = spec[1]; return true end,
+            } })
+        end
+        grid:setupTouchZones(function() return true end)
+        local function swipe()
+            return input_container.onGesture(ui, {
+                ges = "swipe", direction = "northeast",
+                pos = geom:new{ x = 300, y = 400 }, end_pos = geom:new{ x = 400, y = 300 },
+            })
+        end
+        eq(swipe(), true)
+        eq(calls[1], "short_diagonal_swipe", "unzoomed diagonal swipes keep their action")
+        grid:expandPage({ pos = { x = 300, y = 400 } })
+        local x, y = ui.view.visible_area.x, ui.view.visible_area.y
+        eq(swipe(), true)
+        eq(#calls, 1)
+        eq(ui.view.visible_area.x, x - 100)
+        eq(ui.view.visible_area.y, y + 100)
         grid:reset()
     end)
 end

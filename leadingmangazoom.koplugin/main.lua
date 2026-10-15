@@ -71,6 +71,10 @@ function LeadingMangaZoom:onPageUpdate(pageno)
     end
 end
 
+function LeadingMangaZoom:onZoomModeUpdate(new_mode)
+    if self.ready then Grid:onZoomModeUpdate(new_mode) end
+end
+
 function LeadingMangaZoom:refreshPage()
     if self.ready and self:isComic() then
         self:onPageUpdate(self.ui.paging.current_page)
