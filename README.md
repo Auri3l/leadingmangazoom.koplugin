@@ -14,6 +14,7 @@ A KOReader plugin for reading fixed-layout pages up close: manga and comics, but
 - **Quadrant Zoom**: Two-finger tap anywhere to instantly zoom into that quadrant.
 - **Quadrant Navigation**: While zoomed, swipe, tap the left/right side of the screen or press the page buttons to move to the next quadrant, continuing onto the next page.
 - **Free Zoom**: Spread to zoom in as far as you like (repeat to go further), drag or swipe to pan in any direction (diagonals included), pinch to zoom back out. Made for newspapers, magazines and textbooks, and handy for manga too.
+- **Desktop Controls**: Ctrl + mouse wheel or Ctrl +/− to zoom, the wheel to scroll, Ctrl 0 to return to the page, like Okular and other desktop readers.
 - **E-ink Friendly**: Panning redraws once when you lift your finger, so the screen doesn't flash while you move around.
 - **RTL Support**: Toggle Right-to-Left reading direction for authentic manga navigation.
 - **Landscape Handling**: 
@@ -50,8 +51,13 @@ A KOReader plugin for reading fixed-layout pages up close: manga and comics, but
     - **Spread** zooms in on the spot between your fingers; the wider you spread, the more it zooms. Spread again to zoom further (up to 8× the fitted page). Spreading on a zoomed quadrant switches to free zoom.
     - **Drag** with one finger to move around the page in any direction; the screen redraws once when you lift your finger. A quick **swipe** pans the same way, in any direction including diagonals, so you can jump straight to the next article.
     - **Pinch** zooms out step by step; pinch back to about full-page size to return to the page view. A **tap** also returns to the page view.
-6. **Zoom modes**: Picking a zoom mode from KOReader's bottom menu while zoomed in switches straight to that mode.
-7. **Manage Settings**: Access the **Leading Manga Zoom** menu from the main KOReader menu.
+6. **On a computer** (KOReader for Linux, macOS or Windows):
+    - **Ctrl + mouse wheel** up/down zooms in/out. **Ctrl +** and **Ctrl −** do the same from the keyboard.
+    - **Mouse wheel** scrolls up and down while zoomed in; **Shift + wheel** (or a sideways wheel/trackpad swipe) scrolls left and right. When you're not zoomed in, the wheel turns pages as usual.
+    - **Click and drag** moves the page around, like dragging with a finger.
+    - **Ctrl 0** or a click returns to the full page.
+7. **Zoom modes**: Picking a zoom mode from KOReader's bottom menu while zoomed in switches straight to that mode.
+8. **Manage Settings**: Access the **Leading Manga Zoom** menu from the main KOReader menu.
     - *Tip: Hold any menu option to set it as the default for all future books.*
 
 ### Gestures you've already set up
@@ -121,6 +127,9 @@ features at a time if both are configured to handle the same gesture.
 ---
 
 ## 📅 Changelog
+
+### v1.4.0 (2026-10-17)
+- **Desktop controls** ([Euphoriyy/KOReader.patches#26](https://github.com/Euphoriyy/KOReader.patches/issues/26)): Ctrl + mouse wheel and Ctrl +/− zoom in and out, the mouse wheel scrolls while zoomed (Shift + wheel or a sideways wheel scrolls horizontally), and Ctrl 0 returns to the page. Previously the wheel always turned the page, even while zoomed. Ctrl + wheel and the keys follow the *Page Zoom* setting.
 
 ### v1.3.1 (2026-10-15)
 - Quadrant swipes now take priority over KOReader's link swipes while zoomed in. With *swipe to go back* or *swipe to follow nearest link* turned on, those swipes used to leave the quadrant instead of moving to the next one.

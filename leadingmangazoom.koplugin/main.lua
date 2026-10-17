@@ -24,6 +24,8 @@ local SUPPORTED_EXTENSIONS = {
     czb = true,
 }
 
+local Device = require("device")
+
 local LeadingMangaZoom = InputContainer:extend{
     name = "leadingmangazoom",
     is_doc_only = true,
@@ -31,6 +33,36 @@ local LeadingMangaZoom = InputContainer:extend{
 
 function LeadingMangaZoom:init()
     self.ui.menu:registerToMainMenu(self)
+    -- Desktop and keyboard devices: Ctrl + / Ctrl - zoom, Ctrl 0 returns to
+    -- the page. "+" usually needs Shift, so accept it with or without Shift.
+    if Device.hasKeyboard and Device:hasKeyboard() then
+        self.key_events = {
+            LMZZoomIn = {
+                { "Ctrl", "=" }, { "Ctrl", "Shift", "=" }, { "Ctrl", "+" }, { "Ctrl", "Shift", "+" },
+                event = "LMZZoom", args = "in",
+            },
+            LMZZoomOut = {
+                { "Ctrl", "-" }, { "Ctrl", "Shift", "-" },
+                event = "LMZZoom", args = "out",
+            },
+            LMZZoomReset = {
+                { "Ctrl", "0" },
+                event = "LMZZoom", args = "reset",
+            },
+        }
+    end
+end
+
+function LeadingMangaZoom:onLMZZoom(direction)
+    if not (self.ready and self:isComic()) then return false end
+    if direction == "reset" then
+        if not Grid.expanded_cell then return false end
+        Grid:collapse()
+        return true
+    end
+    if not Grid.page_zoom_enabled then return false end
+    if direction == "in" then return Grid:zoomStepIn() end
+    return Grid:zoomStepOut()
 end
 
 function LeadingMangaZoom:onReaderReady()
@@ -47,6 +79,7 @@ function LeadingMangaZoom:onReaderReady()
         -- Quadrant navigation continues onto the next page, except onto a
         -- split spread, whose halves PageSplit already shows separately.
         Grid:installNavigation(is_comic, function() return not PageSplit.is_landscape_page end)
+        Grid:installWheel(is_comic)
         self.ready = true
         self:refreshPage()
     end)
