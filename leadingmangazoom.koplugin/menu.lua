@@ -175,6 +175,9 @@ function Menu:build(plugin, Grid, AutoRotate, PageSplit, Settings)
                         "TAP the middle to return.\n" ..
                         "SPREAD to zoom freely, DRAG\n" ..
                         "to pan, PINCH to zoom out.\n" ..
+                        "Desktop: CTRL + WHEEL or CTRL +/-\n" ..
+                        "to zoom, WHEEL to scroll,\n" ..
+                        "CTRL 0 to return.\n" ..
                         "Auto-rotates landscape pages.\n" ..
                         "Split landscape into two pages.\n\n" ..
                         "Hold option to set as default.\n\n" ..

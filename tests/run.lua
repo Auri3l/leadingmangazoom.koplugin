@@ -728,6 +728,98 @@ test("closing or autosaving while zoomed keeps the reader's zoom mode", function
     eq(ui.zooming.zoom_mode, "contentwidth")
 end)
 
+-- Desktop controls (Linux/macOS/Windows builds): mouse wheel and keyboard.
+local function wheelReader()
+    local grid, ui = freeReader()
+    local inner_calls = 0
+    ui.paging.onPan = function() inner_calls = inner_calls + 1; return true end
+    grid:installWheel(function() return true end)
+    local function wheel(notches, x)
+        return ui.paging:onPan(nil, { mousewheel_direction = notches, relative = { x = 50 * (x or 0), y = 100 * notches } })
+    end
+    return grid, ui, wheel, function() return inner_calls end
+end
+local function hold(mods)
+    package.loaded.device.input.modifiers = mods or {}
+end
+
+test("Ctrl + wheel zooms in and out around the view", function()
+    local grid, ui, wheel, inner = wheelReader()
+    hold({ Ctrl = true })
+    eq(wheel(1), true)
+    eq(grid.expanded_cell, 0)
+    near(ui.view.state.zoom, 1.25)
+    wheel(2)
+    near(ui.view.state.zoom, 1.25 ^ 3)
+    wheel(-2)
+    near(ui.view.state.zoom, 1.25)
+    wheel(-1)
+    eq(grid.expanded_cell, nil, "zooming back to the page returns to the page view")
+    eq(ui.zooming.zoom_mode, "page")
+    eq(wheel(-1), true, "zooming out of the page view does nothing")
+    eq(grid.expanded_cell, nil)
+    eq(inner(), 0, "Ctrl + wheel never turns pages")
+    grid.page_zoom_enabled = false
+    wheel(1)
+    eq(inner(), 1, "with Page Zoom off, KOReader handles the wheel")
+    hold()
+    grid:reset()
+end)
+
+test("the wheel scrolls a free zoom; elsewhere it keeps KOReader's behaviour", function()
+    local grid, ui, wheel, inner = wheelReader()
+    hold()
+    wheel(-1)
+    eq(inner(), 1, "page view: wheel turns pages as before")
+    ui.zones.lmz_page_spread.handler(spread(400, 0, 0))
+    ui.view.visible_area.x, ui.view.visible_area.y = 600, 800
+    wheel(-1)
+    eq(ui.view.visible_area.y, 960, "wheel down scrolls down by a fifth of the view")
+    wheel(2)
+    eq(ui.view.visible_area.y, 640)
+    wheel(0, 1)
+    eq(ui.view.visible_area.x, 720, "horizontal wheel scrolls sideways")
+    hold({ Shift = true })
+    wheel(-1)
+    eq(ui.view.visible_area.x, 840, "Shift + wheel scrolls sideways")
+    eq(ui.view.visible_area.y, 640)
+    hold()
+    eq(inner(), 1)
+    grid:collapse()
+    grid:expand(1)
+    wheel(-1)
+    eq(inner(), 2, "quadrant zoom: wheel still steps through quadrants")
+    grid:reset()
+    eq(ui.paging.onPan ~= grid.wheel_wrapper, true, "reset unwraps the wheel handler")
+end)
+
+test("Ctrl +, Ctrl - and Ctrl 0 zoom from the keyboard", function()
+    saved = {}
+    package.loaded.device.hasKeyboard = function() return true end
+    local plugin_class = dofile(root .. "main.lua")
+    local ui = reader({ portrait })
+    local plugin = setmetatable({ ui = ui }, plugin_class)
+    plugin:init()
+    package.loaded.device.hasKeyboard = nil
+    local keys = plugin.key_events
+    eq(keys.LMZZoomIn[1][2], "=")
+    eq(keys.LMZZoomOut[1][2], "-")
+    eq(keys.LMZZoomReset[1][2], "0")
+    eq(plugin:onLMZZoom("in"), false, "nothing before the reader is ready")
+    plugin:onReaderReady()
+    for _, fn in ipairs(ui.post) do fn() end
+    eq(plugin:onLMZZoom("reset"), false, "Ctrl 0 on the page view is left to others")
+    eq(plugin:onLMZZoom("in"), true)
+    near(ui.view.state.zoom, 1.25)
+    plugin:onLMZZoom("in")
+    near(ui.view.state.zoom, 1.5625)
+    plugin:onLMZZoom("out")
+    near(ui.view.state.zoom, 1.25)
+    eq(plugin:onLMZZoom("reset"), true)
+    eq(ui.zooming.zoom_mode, "page")
+    plugin:onCloseDocument()
+end)
+
 -- Optional integration test against an unmodified KOReader checkout. The
 -- touch-zone graph, geometry, gesture matching and dispatch are real code.
 local koreader = os.getenv("KOREADER_SOURCE")
@@ -872,6 +964,30 @@ if koreader then
         eq(grid.expanded_cell, 1)
         eq(#calls, 1)
         grid:reset()
+    end)
+    test("real KOReader key matching: Ctrl + = / + / - / 0, not plain or Alt", function()
+        local Key = dofile(koreader .. "/frontend/device/key.lua")
+        package.loaded.device.hasKeyboard = function() return true end
+        local plugin = setmetatable({ ui = reader({ portrait }) }, dofile(root .. "main.lua"))
+        plugin:init()
+        package.loaded.device.hasKeyboard = nil
+        local function which(key, mods)
+            local all = { Alt = false, AltGr = false, Ctrl = false, Shift = false, Super = false, Sym = false, Meta = false, ScreenKB = false }
+            for k, v in pairs(mods) do all[k] = v end
+            local pressed = Key:new(key, all)
+            for name, seq in pairs(plugin.key_events) do
+                for _, one in ipairs(seq) do
+                    if pressed:match(one) then return seq.args end
+                end
+            end
+        end
+        eq(which("=", { Ctrl = true }), "in")
+        eq(which("=", { Ctrl = true, Shift = true }), "in")
+        eq(which("+", { Ctrl = true }), "in")
+        eq(which("-", { Ctrl = true }), "out")
+        eq(which("0", { Ctrl = true }), "reset")
+        eq(which("=", {}), nil)
+        eq(which("-", { Ctrl = true, Alt = true }), nil)
     end)
 end
 

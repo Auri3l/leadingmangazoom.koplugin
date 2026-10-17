@@ -35,6 +35,10 @@ local MIN_SPREAD_FACTOR = 1.25
 local DEFAULT_SPREAD_FACTOR = 2
 -- Pinching to within this much of the fitted page returns to the page view.
 local COLLAPSE_FACTOR = 1.05
+-- Desktop: zoom per Ctrl + wheel notch or Ctrl +/- press, and the share of
+-- the view one wheel notch scrolls while zoomed.
+local DESKTOP_ZOOM_STEP = 1.25
+local WHEEL_SCROLL_RATIO = 0.2
 
 -- Quadrant reading order: rows top to bottom, columns by reading direction.
 local LTR_ORDER = { 1, 2, 3, 4 }
@@ -75,6 +79,12 @@ function Grid:reset()
     if self.paging and self.paging.onGotoViewRel == self.navigation_wrapper then
         self.paging.onGotoViewRel = self.inner_navigation
     end
+    if self.wheel_paging and self.wheel_paging.onPan == self.wheel_wrapper then
+        self.wheel_paging.onPan = self.inner_pan
+    end
+    self.wheel_paging = nil
+    self.wheel_wrapper = nil
+    self.inner_pan = nil
     self.paging = nil
     self.navigation_wrapper = nil
     self.inner_navigation = nil
@@ -231,6 +241,76 @@ function Grid:installNavigation(is_supported, can_continue)
     end
     paging.onGotoViewRel = self.navigation_wrapper
 end
+
+-- Desktop mouse wheel. KOReader's SDL build sends wheel notches as "Pan"
+-- events straight to ReaderPaging, which turns pages; touch zones never see
+-- them. Wrap ReaderPaging's handler so that, on supported documents:
+--   Ctrl + wheel zooms in/out (like Okular and most desktop viewers),
+--   the wheel scrolls a free page zoom (Shift + wheel scrolls sideways),
+-- and anything else keeps KOReader's behaviour (including quadrant steps).
+function Grid:installWheel(is_supported)
+    if self.wheel_wrapper or not self.ui.paging then return end
+    local paging = self.ui.paging
+    local inner = paging.onPan
+    if type(inner) ~= "function" then return end
+    self.wheel_paging = paging
+    self.inner_pan = inner
+    self.wheel_wrapper = function(reader, arg, ges)
+        if ges and ges.mousewheel_direction ~= nil and is_supported() and self:onWheel(ges) then
+            return true
+        end
+        return inner(reader, arg, ges)
+    end
+    paging.onPan = self.wheel_wrapper
+end
+
+local function modifierHeld(name)
+    local input = Device.input
+    return input and input.modifiers and input.modifiers[name] or false
+end
+
+function Grid:onWheel(ges)
+    local notches = ges.mousewheel_direction or 0
+    local sideways = ges.relative and ges.relative.x and ges.relative.x / 50 or 0
+    if modifierHeld("Ctrl") then
+        if notches == 0 or not self.page_zoom_enabled then return false end
+        -- Wheel up (away from you) zooms in.
+        return self:zoomStep(DESKTOP_ZOOM_STEP ^ notches)
+    end
+    if self.expanded_cell ~= 0 then return false end
+    local view_w, view_h = self:getViewSize()
+    local dx, dy = sideways * view_w * WHEEL_SCROLL_RATIO, -notches * view_h * WHEEL_SCROLL_RATIO
+    if modifierHeld("Shift") then
+        dx, dy = -notches * view_w * WHEEL_SCROLL_RATIO, 0
+    end
+    if dx ~= 0 or dy ~= 0 then self.ui.view:PanningUpdate(dx, dy) end
+    return true
+end
+
+-- Zooms in (factor > 1) or out around the middle of the view: from the
+-- page view, from a quadrant, or within a free zoom. Used by the keyboard
+-- and Ctrl + wheel.
+function Grid:zoomStep(factor)
+    if not self.ui.view or not self.ui.zooming then return false end
+    if self.expanded_cell then return self:zoomBy(factor) end
+    if factor <= 1 then return true end -- Already showing the page.
+    local page_size = self:getPageSize()
+    if not page_size then return false end
+    local view = self.ui.view
+    local fit = self:fitZoom(page_size)
+    local old_zoom = view.state.zoom or fit
+    local area = view.visible_area
+    -- Read the center before saveView, which may leave continuous view.
+    local x, y = area.x + area.w / 2, area.y + area.h / 2
+    local new_zoom = math.min(math.max(old_zoom, fit) * factor, fit * MAX_ZOOM_FACTOR)
+    self:saveView()
+    self.expanded_cell = 0
+    self:setZoom(new_zoom, x * new_zoom / old_zoom, y * new_zoom / old_zoom)
+    return true
+end
+
+function Grid:zoomStepIn() return self:zoomStep(DESKTOP_ZOOM_STEP) end
+function Grid:zoomStepOut() return self:zoomStep(1 / DESKTOP_ZOOM_STEP) end
 
 -- Returns the page size as displayed (accounting for document rotation).
 function Grid:getPageSize()
