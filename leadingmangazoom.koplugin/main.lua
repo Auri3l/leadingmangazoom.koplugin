@@ -93,6 +93,7 @@ function LeadingMangaZoom:onReaderReady()
         -- split spread, whose halves PageSplit already shows separately.
         Grid:installNavigation(is_comic, function() return not PageSplit.is_landscape_page end)
         Grid:installWheel(is_comic)
+        self:applyDoubleTap()
         self.ready = true
         self:refreshPage()
     end)
@@ -123,6 +124,24 @@ function LeadingMangaZoom:onSaveSettings()
     if mode and self.ui.doc_settings then
         self.ui.doc_settings:saveSetting("zoom_mode", mode)
     end
+end
+
+-- KOReader only reports double taps when its "double tap" setting is on
+-- (off by default, as single taps then wait to see if a second follows).
+-- While double-tap zoom is on, turn double taps on for this book; otherwise
+-- follow KOReader's setting.
+function LeadingMangaZoom:applyDoubleTap()
+    local want_double_tap = Grid.double_tap_enabled and self:isComic()
+    local disable
+    if want_double_tap then
+        disable = false
+    else
+        disable = not (G_reader_settings and G_reader_settings.isFalse
+            and G_reader_settings:isFalse("disable_double_tap"))
+    end
+    self.ui.disable_double_tap = disable
+    local input = Device.input
+    if input then input.disable_double_tap = disable end
 end
 
 function LeadingMangaZoom:onZoomModeUpdate(new_mode)

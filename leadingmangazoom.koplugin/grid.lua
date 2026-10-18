@@ -53,7 +53,13 @@ function Grid:init(ui, Settings)
     self.rtl_enabled = Settings:get("grid_rtl_enabled") or false
     self.navigation_enabled = Settings:get("grid_navigation_enabled")
     if self.navigation_enabled == nil then self.navigation_enabled = true end
+    self.double_tap_enabled = Settings:get("double_tap_zoom") == true
+    self.double_tap_level = tonumber(Settings:get("double_tap_zoom_level")) or Grid.DOUBLE_TAP_DEFAULT
 end
+
+-- Double-tap zoom levels offered in the menu, relative to the whole page.
+Grid.DOUBLE_TAP_LEVELS = { 1.5, 2, 2.5, 3, 4 }
+Grid.DOUBLE_TAP_DEFAULT = 2
 
 function Grid:clearState()
     self.expanded_cell = nil
@@ -158,6 +164,24 @@ function Grid:setupTouchZones(is_supported)
         handler = function(ges)
             if not is_supported() then return false end
             return self:onSwipe(ges)
+        end,
+    }
+
+    -- Double tap anywhere: zoom in on that spot, or back out when zoomed.
+    -- Goes before the Gestures plugin's double-tap zones and ReaderZooming's
+    -- own double-tap free zoom, only while the option is on.
+    zones[#zones + 1] = {
+        id = "lmz_double_tap",
+        ges = "double_tap",
+        overrides = {
+            "double_tap_left_side", "double_tap_right_side",
+            "double_tap_top_left_corner", "double_tap_top_right_corner",
+            "double_tap_bottom_left_corner", "double_tap_bottom_right_corner",
+        },
+        screen_zone = { ratio_x = 0, ratio_y = 0, ratio_w = 1, ratio_h = 1 },
+        handler = function(ges)
+            if not (is_supported() and self.double_tap_enabled) then return false end
+            return self:onDoubleTap(ges)
         end,
     }
 
@@ -491,7 +515,21 @@ function Grid:zoomAt(new_zoom, ges, anchored)
     return true
 end
 
-function Grid:expandPage(ges)
+function Grid:onDoubleTap(ges)
+    if self.expanded_cell then
+        self:collapse()
+        return true
+    end
+    return self:expandPage(ges, self.double_tap_level)
+end
+
+function Grid:toggleDoubleTap()
+    self.double_tap_enabled = not self.double_tap_enabled
+    return self.double_tap_enabled
+end
+
+-- `level`: zoom relative to the whole page; otherwise from the gesture.
+function Grid:expandPage(ges, level)
     local view = self.ui.view
     if not view or not self.ui.zooming then return false end
 
@@ -499,8 +537,8 @@ function Grid:expandPage(ges)
     if not page_size then return false end
 
     local fit = self:fitZoom(page_size)
-    local factor = self:gestureFactor(ges)
-    factor = factor and math.max(factor, MIN_SPREAD_FACTOR) or DEFAULT_SPREAD_FACTOR
+    local factor = level or self:gestureFactor(ges)
+    factor = factor and math.max(factor, level and 1 or MIN_SPREAD_FACTOR) or DEFAULT_SPREAD_FACTOR
     local new_zoom = math.min(fit * factor, fit * MAX_ZOOM_FACTOR)
 
     if not (ges and ges.pos) then
