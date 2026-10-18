@@ -28,9 +28,15 @@ jobs:
           ref: ${{ matrix.koreader }}
           path: .koreader
           sparse-checkout: frontend
-      - name: Install LuaJIT
-        run: sudo apt-get update && sudo apt-get install -y luajit
-      - name: Test real KOReader touch dispatch
+      - uses: actions/checkout@v4
+        with:
+          repository: koreader/koreader-base
+          path: .koreader-base
+          sparse-checkout: ffi
+      - name: Install LuaJIT, libarchive and zip
+        run: sudo apt-get update && sudo apt-get install -y luajit libarchive13 zip
+      - name: Test real KOReader touch dispatch, key matching and updater unpacking
         env:
           KOREADER_SOURCE: .koreader
+          KOREADER_BASE: .koreader-base
         run: luajit tests/run.lua

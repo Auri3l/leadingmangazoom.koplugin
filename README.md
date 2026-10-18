@@ -15,6 +15,7 @@ A KOReader plugin for reading fixed-layout pages up close: manga and comics, but
 - **Quadrant Navigation**: While zoomed, swipe, tap the left/right side of the screen or press the page buttons to move to the next quadrant, continuing onto the next page.
 - **Free Zoom**: Spread to zoom in as far as you like (repeat to go further), drag or swipe to pan in any direction (diagonals included), pinch to zoom back out. Made for newspapers, magazines and textbooks, and handy for manga too.
 - **Desktop Controls**: Ctrl + mouse wheel or Ctrl +/− to zoom, the wheel to scroll, Ctrl 0 to return to the page, like Okular and other desktop readers.
+- **Updates from inside KOReader**: *Leading Manga Zoom › Updates* checks GitHub, shows what's new and installs the latest release, no computer needed.
 - **E-ink Friendly**: Panning redraws once when you lift your finger, so the screen doesn't flash while you move around.
 - **RTL Support**: Toggle Right-to-Left reading direction for authentic manga navigation.
 - **Landscape Handling**: 
@@ -99,6 +100,14 @@ LeadingMangaZoom is optimized for **fixed-layout** documents. It supports:
 3. Restart KOReader. The plugin appears as **Leading Manga Zoom** in the main menu and in *Plugin management*.
 4. Make sure **Reflow** is off for the document.
 
+### Updating
+
+From v1.5.0 on, the plugin updates itself. Open a book, then go to **Leading Manga Zoom › Updates › Check for updates**. If there's a newer release, you'll see what's new; tap **Update**, then **Restart**. Wi-Fi is turned on if needed.
+
+- **Check automatically once a day** (off by default) looks for a new version when Wi-Fi is already on, and never turns Wi-Fi on by itself.
+- The update downloads the release's `leadingmangazoom.koplugin.zip`, checks that it really is this plugin and the version it claims to be, and only then replaces the plugin's files. If anything goes wrong, your installed version is left as it was and you'll see why.
+- To update from v1.4.1 or older, install v1.5.0 by hand once, as above.
+
 > [!TIP]
 > Downloading the source code zip from GitHub instead gives you an extra outer folder (`leadingmangazoom.koplugin-master/`). Copy only the inner `leadingmangazoom.koplugin` folder, or the plugin won't show up.
 
@@ -108,6 +117,7 @@ LeadingMangaZoom is optimized for **fixed-layout** documents. It supports:
 
 - Based on [maximum.koplugin](https://github.com/Shac0x/maximum.koplugin) by [@Shac0x](https://github.com/Shac0x)
 - Auto-rotate logic inspired by [koreader-autorotate](https://github.com/Extraltodeus/koreader-autorotate) by [@Extraltodeus](https://github.com/Extraltodeus)
+- Update feature modelled on [Bookshelf](https://github.com/AndyHazz/bookshelf.koplugin)'s in-app updates
 - Free zoom requested and tested by [@shuvashish76](https://github.com/shuvashish76), with thanks to [@Euphoriyy](https://github.com/Euphoriyy) ([KOReader.patches#26](https://github.com/Euphoriyy/KOReader.patches/issues/26))
 
 ## 🧪 Developer checks
@@ -127,6 +137,11 @@ features at a time if both are configured to handle the same gesture.
 ---
 
 ## 📅 Changelog
+
+### v1.5.0 (2026-10-18)
+- **Update from inside KOReader**: *Leading Manga Zoom › Updates* checks the latest GitHub release, shows its notes, downloads and installs it, then offers to restart. KOReader has no plugin store, so this replaces downloading and copying the zip by hand. Optional daily check, off by default, which never turns Wi-Fi on by itself.
+- The download is checked before anything is replaced: it must be a release zip of this plugin, contain its main files, and carry the expected version. It's unpacked into a temporary folder first, so a broken download can't leave the plugin half-updated.
+- The plugin menu now opens for any book, so About and Updates are always reachable. Reading options still need a supported file.
 
 ### v1.4.1 (2026-10-18)
 - **Ctrl + wheel zooms at the mouse pointer**: the spot under the pointer stays in place, like Okular, instead of zooming into the middle of the window.

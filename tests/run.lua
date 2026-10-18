@@ -871,6 +871,222 @@ test("keypad +, - and 0 are mapped on desktop without overriding existing keys",
     other:init() -- e-readers: nothing to map, nothing breaks
 end)
 
+-- Self-updater (issue: update the plugin without a plugin store).
+local Updater = dofile(root .. "updater.lua")
+local function release(extra)
+    local r = {
+        tag_name = "v1.6.0", draft = false, prerelease = false, html_url = "https://example/rel",
+        body = "## What's new\n- **Bold** and `code` and [a link](https://x)\n\n> quote",
+        assets = {
+            { name = "notes.txt", browser_download_url = "https://example/notes.txt" },
+            { name = "leadingmangazoom.koplugin.zip", browser_download_url = "https://example/lmz.zip" },
+        },
+    }
+    for k, v in pairs(extra or {}) do r[k] = v end
+    return r
+end
+
+test("updater compares versions numerically", function()
+    eq(Updater.isNewer("1.10.0", "1.9.9"), true)
+    eq(Updater.isNewer("v1.5.0", "1.4.1"), true)
+    eq(Updater.isNewer("1.4.1", "1.4.1"), false)
+    eq(Updater.isNewer("1.4", "1.4.0"), false)
+    eq(Updater.isNewer("1.4.0.1", "1.4"), true)
+    eq(Updater.isNewer("1.3.9", "1.4.0"), false)
+    eq(Updater.metaVersion('local x\n    version = "1.5.0",\n'), "1.5.0")
+end)
+
+test("updater picks the plugin zip from a final release only", function()
+    local r = Updater.parseRelease(release())
+    eq(r.version, "1.6.0")
+    eq(r.url, "https://example/lmz.zip")
+    eq(r.page, "https://example/rel")
+    eq(Updater.parseRelease(release({ draft = true })), nil)
+    eq(Updater.parseRelease(release({ prerelease = true })), nil)
+    local none, why = Updater.parseRelease(release({ assets = {} }))
+    eq(none, nil)
+    assert(why:find("leadingmangazoom.koplugin.zip", 1, true))
+    eq(Updater.parseRelease(nil), nil)
+    eq(Updater.parseRelease({ message = "Not Found" }), nil)
+end)
+
+test("release notes are shown without Markdown and kept short", function()
+    local notes = Updater.shortNotes(release().body)
+    eq(notes, "What's new\n- Bold and code and a link\n\nquote")
+    local long = Updater.shortNotes(string.rep("word ", 200), 50)
+    assert(#long <= 54, "cut to the limit")
+    assert(long:sub(-3) == "\226\128\166", "ends with an ellipsis")
+    -- Never cut inside a multi-byte character.
+    for limit = 29, 33 do
+        local turkish = Updater.shortNotes(string.rep("\196\159", 40), limit)
+        local body = turkish:gsub(" \226\128\166$", "")
+        assert(body:gsub("\196\159", "") == "", "cut at " .. limit .. " broke a character")
+        assert(#body > 0 and #body <= limit)
+    end
+end)
+
+test("only a clean plugin archive is accepted", function()
+    local function entries(list, mode)
+        local t = {}
+        for _, p in ipairs(list) do t[#t + 1] = { path = p, mode = p:sub(-1) == "/" and "directory" or (mode or "file") } end
+        return t
+    end
+    local good = { "leadingmangazoom.koplugin/", "leadingmangazoom.koplugin/_meta.lua",
+        "leadingmangazoom.koplugin/main.lua", "leadingmangazoom.koplugin/grid.lua" }
+    eq(Updater.validateEntries(entries(good)), true)
+    local function rejects(list, mode, fragment)
+        local ok, why = Updater.validateEntries(entries(list, mode))
+        eq(ok, nil)
+        assert(why:find(fragment, 1, true), why)
+    end
+    rejects({ good[2], good[3] }, nil, "missing grid.lua")
+    rejects({ good[2], good[3], good[4], "other.koplugin/x.lua" }, nil, "unexpected folder")
+    rejects({ good[2], good[3], good[4], "leadingmangazoom.koplugin/../../evil.lua" }, nil, "unsafe path")
+    rejects({ "/leadingmangazoom.koplugin/main.lua" }, nil, "unsafe path")
+    rejects({ good[2], good[3], good[4], "leadingmangazoom.koplugin/link" }, "link", "unexpected entry")
+    -- GitHub's "Source code" zip has the wrong top folder.
+    rejects({ "leadingmangazoom.koplugin-1.6.0/leadingmangazoom.koplugin/main.lua" }, nil, "unexpected folder")
+end)
+
+-- A small fake KOReader for the dialogs and network.
+local function updaterHarness(opts)
+    opts = opts or {}
+    local shown, scheduled = {}, {}
+    local ui = {
+        show = function(_, w) shown[#shown + 1] = w end,
+        scheduleIn = function(_, _, fn) scheduled[#scheduled + 1] = fn end,
+        restartKOReader = function() shown[#shown + 1] = { restarted = true } end,
+    }
+    local net = { connected = opts.connected ~= false, waited = 0 }
+    package.loaded["ui/uimanager"] = setmetatable(ui, { __index = manager })
+    package.loaded["ui/widget/confirmbox"] = { new = function(_, v) v.confirm = true; return v end }
+    package.loaded["ui/network/manager"] = {
+        isConnected = function() return net.connected end,
+        runWhenConnected = function(_, fn) net.waited = net.waited + 1; net.pending = fn end,
+    }
+    local store = {}
+    local settings = {
+        get = function(_, k) return store[k] end,
+        set = function(_, k, v) store[k] = v end,
+    }
+    local u = dofile(root .. "updater.lua")
+    u:init(root, settings)
+    local function run()
+        while #scheduled > 0 do table.remove(scheduled, 1)() end
+    end
+    return u, shown, run, net, store
+end
+local function restoreManager() package.loaded["ui/uimanager"] = manager end
+
+test("checking says up to date, or offers the newer version with its notes", function()
+    local u, shown, run, _, store = updaterHarness()
+    local meta = io.open(root .. "_meta.lua"):read("*a")
+    local installed = Updater.metaVersion(meta)
+    u.fetchLatest = function() return Updater.parseRelease(release({ tag_name = "v" .. installed })) end
+    u:check()
+    run()
+    assert(shown[#shown].text:find("up to date", 1, true), shown[#shown].text)
+    assert(type(store.last_update_check) == "number")
+    u.fetchLatest = function() return Updater.parseRelease(release({ tag_name = "v99.0.0" })) end
+    local installed_with = nil
+    u.install = function(_, rel) installed_with = rel end
+    u:check()
+    run()
+    local box = shown[#shown]
+    eq(box.confirm, true)
+    assert(box.text:find("v99.0.0 is available", 1, true))
+    assert(box.text:find("You have v" .. installed, 1, true))
+    assert(box.text:find("Bold and code", 1, true), "notes are shown")
+    box.ok_callback()
+    eq(installed_with.version, "99.0.0")
+    u.fetchLatest = function() return nil, "the connection timed out" end
+    u:check()
+    run()
+    assert(shown[#shown].text:find("timed out", 1, true))
+    assert(shown[#shown].text:find("github.com/Auri3l/leadingmangazoom.koplugin/releases", 1, true))
+    restoreManager()
+end)
+
+test("checking waits for Wi-Fi instead of failing", function()
+    local u, shown, run, net = updaterHarness({ connected = false })
+    local fetched = 0
+    u.fetchLatest = function() fetched = fetched + 1; return nil, "x" end
+    u:check()
+    run()
+    eq(fetched, 0)
+    eq(net.waited, 1)
+    net.connected = true
+    net.pending()
+    run()
+    eq(fetched, 1)
+    restoreManager()
+end)
+
+test("install downloads, unpacks and offers a restart; failures say why", function()
+    local u, shown, run = updaterHarness()
+    package.loaded.device.canRestart = function() return true end
+    local steps = {}
+    u.download = function(_, url) steps[#steps + 1] = "download " .. url; return "/tmp/x.zip" end
+    u.unpack = function(_, path, v) steps[#steps + 1] = "unpack " .. v; return v end
+    u:install(Updater.parseRelease(release()))
+    run()
+    eq(steps[1], "download https://example/lmz.zip")
+    eq(steps[2], "unpack 1.6.0")
+    local box = shown[#shown]
+    assert(box.text:find("updated to v1.6.0", 1, true))
+    box.ok_callback()
+    eq(shown[#shown].restarted, true)
+    u.unpack = function() return nil, "the download is damaged (bad)" end
+    u:install(Updater.parseRelease(release()))
+    run()
+    assert(shown[#shown].text:find("Update failed", 1, true))
+    assert(shown[#shown].text:find("damaged", 1, true))
+    package.loaded.device.canRestart = nil
+    restoreManager()
+end)
+
+test("automatic checks are opt-in, daily, and never turn Wi-Fi on", function()
+    local u, shown, run, net, store = updaterHarness()
+    local fetched = 0
+    u.fetchLatest = function() fetched = fetched + 1; return Updater.parseRelease(release({ tag_name = "v99.0.0" })) end
+    u:maybeAutoCheck(); run()
+    eq(fetched, 0, "off by default")
+    u:setAutoCheck(true)
+    u:maybeAutoCheck(); run()
+    eq(fetched, 1)
+    eq(shown[#shown].confirm, true, "offers the new version")
+    u:maybeAutoCheck(); run()
+    eq(fetched, 1, "not again within a day")
+    store.last_update_check = os.time() - 25 * 3600
+    net.connected = false
+    u:maybeAutoCheck(); run()
+    eq(fetched, 1, "not when offline")
+    eq(net.waited, 0, "and never asks to turn Wi-Fi on")
+    restoreManager()
+end)
+
+test("Updates menu is there even when the document isn't supported", function()
+    saved = {}
+    local plugin = setmetatable({ ui = reader({ portrait }) }, dofile(root .. "main.lua"))
+    plugin:init()
+    plugin.ui.document.file = "book.epub"
+    local menu = {}
+    plugin:addToMainMenu(menu)
+    local root_item = menu.leadingmangazoom
+    eq(root_item.enabled_func, nil, "the menu itself stays enabled")
+    local updates, about, grid
+    for _, item in ipairs(root_item.sub_item_table) do
+        if item.text_func then updates = item end
+        if item.text == "About" then about = item end
+        if item.text == "Enable Grid Mode" then grid = item end
+    end
+    assert(updates.text_func():find("^Updates %(v%d"), updates.text_func())
+    eq(updates.enabled_func, nil)
+    eq(about.enabled_func, nil)
+    eq(grid.enabled_func(), false, "reading features still need a supported file")
+    eq(root_item.sub_item_table[#root_item.sub_item_table], about, "About stays last")
+end)
+
 -- Optional integration test against an unmodified KOReader checkout. The
 -- touch-zone graph, geometry, gesture matching and dispatch are real code.
 local koreader = os.getenv("KOREADER_SOURCE")
@@ -1041,5 +1257,70 @@ if koreader then
         eq(which("-", { Ctrl = true, Alt = true }), nil)
     end)
 end
+
+    local base = os.getenv("KOREADER_BASE")
+    local zip_ok = base and os.execute("command -v zip >/dev/null 2>&1")
+    if base and (zip_ok == true or zip_ok == 0) then
+        test("real libarchive: update unpacks over the plugin; bad zips leave it alone", function()
+            local ffi = require("ffi")
+            ffi.libc = ffi.libc or "gnu"
+            ffi.loadlib = ffi.loadlib or function(name, ver)
+                return ffi.load("lib" .. name .. ".so." .. ver)
+            end
+            local saved_path = package.path
+            package.path = base .. "/?.lua;" .. package.path
+            package.loaded["ffi/archiver"] = dofile(base .. "/ffi/archiver.lua")
+            package.path = saved_path
+            local tmp = os.tmpname(); os.remove(tmp); os.execute("mkdir -p " .. tmp)
+            local function sh(cmd) local r = os.execute(cmd); assert(r == true or r == 0, cmd) end
+            local function write(path, text) local f = assert(io.open(path, "w")); f:write(text); f:close() end
+            local function read(path) local f = io.open(path); if not f then return nil end local t = f:read("*a"); f:close(); return t end
+            -- Installed plugin: old version plus a file of the user's.
+            sh("mkdir -p " .. tmp .. "/plugins/leadingmangazoom.koplugin " .. tmp .. "/data/cache " .. tmp .. "/build/leadingmangazoom.koplugin/docs")
+            local plugin = tmp .. "/plugins/leadingmangazoom.koplugin"
+            write(plugin .. "/_meta.lua", 'return { version = "1.0.0" }')
+            write(plugin .. "/main.lua", "old main")
+            write(plugin .. "/grid.lua", "old grid")
+            write(plugin .. "/keep.txt", "mine")
+            -- New release zip.
+            local build = tmp .. "/build/leadingmangazoom.koplugin"
+            write(build .. "/_meta.lua", 'return { version = "2.0.0" }')
+            write(build .. "/main.lua", "new main")
+            write(build .. "/grid.lua", "new grid")
+            write(build .. "/docs/help.txt", "help")
+            sh("cd " .. tmp .. "/build && zip -qr ../good.zip leadingmangazoom.koplugin")
+            sh("cd " .. tmp .. "/build && mv leadingmangazoom.koplugin wrong.koplugin && zip -qr ../wrong.zip wrong.koplugin")
+            write(tmp .. "/broken.zip", "this is not a zip")
+            package.loaded.datastorage = { getSettingsDir = function() return "." end,
+                getDataDir = function() return tmp .. "/data" end }
+            package.loaded["libs/libkoreader-lfs"] = {
+                attributes = function(p, what)
+                    local ok = os.execute("test -d '" .. p .. "'")
+                    if ok == true or ok == 0 then return what and "directory" or { mode = "directory" } end
+                end,
+                mkdir = function(p) return os.execute("mkdir -p '" .. p .. "'") end,
+            }
+            local u = dofile(root .. "updater.lua")
+            u:init(plugin, nil)
+            eq(u:installedVersion(), "1.0.0")
+            -- Damaged or wrong archives change nothing.
+            local v, why = u:unpack(tmp .. "/broken.zip", "2.0.0")
+            eq(v, nil); assert(why:find("damaged", 1, true), why)
+            v, why = u:unpack(tmp .. "/wrong.zip", "2.0.0")
+            eq(v, nil); assert(why:find("not a plugin release", 1, true), why)
+            v, why = u:unpack(tmp .. "/good.zip", "3.0.0")
+            eq(v, nil); assert(why:find("wrong version", 1, true), why)
+            eq(read(plugin .. "/main.lua"), "old main")
+            -- The real thing.
+            eq(u:unpack(tmp .. "/good.zip", "2.0.0"), "2.0.0")
+            eq(u:installedVersion(), "2.0.0")
+            eq(read(plugin .. "/main.lua"), "new main")
+            eq(read(plugin .. "/grid.lua"), "new grid")
+            eq(read(plugin .. "/docs/help.txt"), "help", "new sub-folders are created")
+            eq(read(plugin .. "/keep.txt"), "mine", "other files are left alone")
+            os.execute("rm -rf '" .. tmp .. "'")
+            package.loaded.datastorage = { getSettingsDir = function() return "." end }
+        end)
+    end
 
 print("1.." .. count)

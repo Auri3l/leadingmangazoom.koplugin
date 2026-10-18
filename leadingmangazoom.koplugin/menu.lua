@@ -16,13 +16,9 @@ function Menu:showMessage(text, timeout)
     })
 end
 
-function Menu:build(plugin, Grid, AutoRotate, PageSplit, Settings)
+function Menu:build(plugin, Grid, AutoRotate, PageSplit, Settings, Updater)
     local self_menu = self
-    return {
-        text = _("Leading Manga Zoom"),
-        sorting_hint = "typeset",
-        enabled_func = function() return plugin:isComic() end,
-        sub_item_table = {
+    local items = {
             {
                 text = _("Enable Grid Mode"),
                 checked_func = function() return Grid.enabled end,
@@ -180,14 +176,45 @@ function Menu:build(plugin, Grid, AutoRotate, PageSplit, Settings)
                         "CTRL 0 to return.\n" ..
                         "Auto-rotates landscape pages.\n" ..
                         "Split landscape into two pages.\n\n" ..
-                        "Hold option to set as default.\n\n" ..
+                        "Hold option to set as default.\n" ..
+                        "Updates: menu > Updates.\n\n" ..
                         "Supports: CBZ, CBR, CBT, CB7, CZB, PDF\n\n" ..
                         "Forked from Maximum by @shac0x\n" ..
                         "Maintained by @Aur13l"
                     )
                 end,
             },
-        },
+    }
+    -- Reading features need a supported document; About and Updates don't.
+    local is_comic = function() return plugin:isComic() end
+    local about = _("About")
+    for __, item in ipairs(items) do
+        if item.text ~= about then item.enabled_func = is_comic end
+    end
+    if Updater then
+        table.insert(items, #items, {
+            text_func = function()
+                return _("Updates") .. " (v" .. Updater:installedVersion() .. ")"
+            end,
+            sub_item_table = {
+                {
+                    text = _("Check for updates"),
+                    keep_menu_open = true,
+                    callback = function() Updater:check() end,
+                },
+                {
+                    text = _("Check automatically once a day"),
+                    help_text = _("When Wi-Fi is already on, check GitHub for a new version at most once a day and offer to install it. Wi-Fi is never turned on for this."),
+                    checked_func = function() return Updater:autoCheckEnabled() end,
+                    callback = function() Updater:setAutoCheck(not Updater:autoCheckEnabled()) end,
+                },
+            },
+        })
+    end
+    return {
+        text = _("Leading Manga Zoom"),
+        sorting_hint = "typeset",
+        sub_item_table = items,
     }
 end
 

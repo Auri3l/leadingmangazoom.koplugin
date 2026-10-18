@@ -14,6 +14,7 @@ local AutoRotate = dofile(plugin_dir .. "autorotate.lua")
 local Grid = dofile(plugin_dir .. "grid.lua")
 local PageSplit = dofile(plugin_dir .. "pagesplit.lua")
 local Menu = dofile(plugin_dir .. "menu.lua")
+local Updater = dofile(plugin_dir .. "updater.lua")
 
 local SUPPORTED_EXTENSIONS = {
     cbz = true,
@@ -33,6 +34,7 @@ local LeadingMangaZoom = InputContainer:extend{
 
 function LeadingMangaZoom:init()
     self.ui.menu:registerToMainMenu(self)
+    Updater:init(plugin_dir, Settings)
     -- Desktop and keyboard devices: Ctrl + / Ctrl - zoom, Ctrl 0 returns to
     -- the page. "+" usually needs Shift, so accept it with or without Shift.
     -- KOReader's desktop key map has no keypad +, - and 0 (SDL keycodes
@@ -75,6 +77,8 @@ function LeadingMangaZoom:onLMZZoom(direction)
 end
 
 function LeadingMangaZoom:onReaderReady()
+    -- Opt-in, at most once a day, never turns Wi-Fi on by itself.
+    pcall(Updater.maybeAutoCheck, Updater)
     Grid:init(self.ui, Settings)
     PageSplit:init(self.ui, Settings, Grid, function() return self:isComic() end)
     if not self:isComic() then return end
@@ -132,7 +136,7 @@ function LeadingMangaZoom:refreshPage()
 end
 
 function LeadingMangaZoom:addToMainMenu(menu_items)
-    menu_items.leadingmangazoom = Menu:build(self, Grid, AutoRotate, PageSplit, Settings)
+    menu_items.leadingmangazoom = Menu:build(self, Grid, AutoRotate, PageSplit, Settings, Updater)
 end
 
 function LeadingMangaZoom:onCloseDocument()
