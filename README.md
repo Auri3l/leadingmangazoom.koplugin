@@ -56,7 +56,7 @@ A KOReader plugin for reading fixed-layout pages up close: manga and comics, but
 6. **Double-Tap Zoom** (off by default): turn it on in **Leading Manga Zoom › Double-tap to zoom** and pick a **Zoom level** from 1.5× to 4×.
     - **Double tap** anywhere to zoom in on that spot; double tap again to go back to the page. From there you can drag, swipe and pinch as usual.
     - KOReader normally ignores double taps. This option turns them on for supported books only, which makes single taps (like page turns) wait a moment to check for a second tap.
-    - Tap turns it on for this book; hold sets it as the default. The zoom level is remembered.
+    - Your choice and zoom level are remembered for all books.
 7. **On a computer** (KOReader for Linux, macOS or Windows):
     - **Ctrl + mouse wheel** up/down zooms in/out, keeping the spot under the mouse pointer in place. **Ctrl +** and **Ctrl −** (main keys or keypad) zoom around the middle of the window.
     - **Mouse wheel** scrolls up and down while zoomed in; **Shift + wheel** (or a sideways wheel/trackpad swipe) scrolls left and right. When you're not zoomed in, the wheel turns pages as usual.
@@ -64,7 +64,7 @@ A KOReader plugin for reading fixed-layout pages up close: manga and comics, but
     - **Ctrl 0** or a click returns to the full page.
 8. **Zoom modes**: Picking a zoom mode from KOReader's bottom menu while zoomed in switches straight to that mode.
 9. **Manage Settings**: Access the **Leading Manga Zoom** menu from the main KOReader menu.
-    - *Tip: Hold any menu option to set it as the default for all future books.*
+    - *Tip: Hold any menu option to set it as the default for all future books. (Double-tap zoom and its level are always remembered.)*
 
 ### Gestures you've already set up
 
@@ -143,6 +143,9 @@ features at a time if both are configured to handle the same gesture.
 ---
 
 ## 📅 Changelog
+
+### v1.5.2 (2026-10-18)
+- **Double-tap zoom stays on**: turning it on is now remembered for all books. Before, tapping the option only turned it on for the open book, so it seemed to switch itself off after closing the book (reported on a Kindle Paperwhite). The other options keep working as before: tap for this book, hold to set the default.
 
 ### v1.5.1 (2026-10-18)
 - **Double-tap to zoom** ([#12](https://github.com/Auri3l/leadingmangazoom.koplugin/issues/12)): double tap anywhere to zoom in on that spot, double tap again to return. Choose the zoom level (1.5×, 2×, 2.5×, 3× or 4×) in the menu. Off by default. While on, the plugin turns on KOReader's double taps for supported books, so single taps wait briefly for a possible second tap.
