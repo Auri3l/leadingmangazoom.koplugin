@@ -52,7 +52,7 @@ A KOReader plugin for reading fixed-layout pages up close: manga and comics, but
     - **Drag** with one finger to move around the page in any direction; the screen redraws once when you lift your finger. A quick **swipe** pans the same way, in any direction including diagonals, so you can jump straight to the next article.
     - **Pinch** zooms out step by step; pinch back to about full-page size to return to the page view. A **tap** also returns to the page view.
 6. **On a computer** (KOReader for Linux, macOS or Windows):
-    - **Ctrl + mouse wheel** up/down zooms in/out. **Ctrl +** and **Ctrl −** do the same from the keyboard.
+    - **Ctrl + mouse wheel** up/down zooms in/out, keeping the spot under the mouse pointer in place. **Ctrl +** and **Ctrl −** (main keys or keypad) zoom around the middle of the window.
     - **Mouse wheel** scrolls up and down while zoomed in; **Shift + wheel** (or a sideways wheel/trackpad swipe) scrolls left and right. When you're not zoomed in, the wheel turns pages as usual.
     - **Click and drag** moves the page around, like dragging with a finger.
     - **Ctrl 0** or a click returns to the full page.
@@ -127,6 +127,10 @@ features at a time if both are configured to handle the same gesture.
 ---
 
 ## 📅 Changelog
+
+### v1.4.1 (2026-10-18)
+- **Ctrl + wheel zooms at the mouse pointer**: the spot under the pointer stays in place, like Okular, instead of zooming into the middle of the window.
+- **Keypad + and −** now work with Ctrl (and keypad 0 for Ctrl 0). KOReader's desktop builds didn't recognise these keys at all.
 
 ### v1.4.0 (2026-10-17)
 - **Desktop controls** ([Euphoriyy/KOReader.patches#26](https://github.com/Euphoriyy/KOReader.patches/issues/26)): Ctrl + mouse wheel and Ctrl +/− zoom in and out, the mouse wheel scrolls while zoomed (Shift + wheel or a sideways wheel scrolls horizontally), and Ctrl 0 returns to the page. Previously the wheel always turned the page, even while zoomed. Ctrl + wheel and the keys follow the *Page Zoom* setting.
