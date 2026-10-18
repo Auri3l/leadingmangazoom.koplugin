@@ -820,6 +820,57 @@ test("Ctrl +, Ctrl - and Ctrl 0 zoom from the keyboard", function()
     plugin:onCloseDocument()
 end)
 
+test("Ctrl + wheel keeps the spot under the mouse pointer in place", function()
+    local grid, ui, wheel = wheelReader()
+    grid.pointerPosition = function() return { x = 100, y = 200 } end
+    hold({ Ctrl = true })
+    -- Page view, zoom 1, nothing panned: page point (100, 200) is under the pointer.
+    wheel(1)
+    near(ui.view.state.zoom, 1.25)
+    -- (125, 250) at the new zoom must land at screen (100, 200): the view's
+    -- top-left is (25, 50), so its center is (25 + 300, 50 + 400).
+    near(ui.view.center.x, 325)
+    near(ui.view.center.y, 450)
+    -- Already zoomed and panned: the same rule holds.
+    ui.view.visible_area.x, ui.view.visible_area.y = 40, 60
+    wheel(1)
+    near(ui.view.state.zoom, 1.5625)
+    -- Point under the pointer was (140, 260) at 1.25, (175, 325) at 1.5625.
+    near(ui.view.center.x, 175 - 100 + 300)
+    near(ui.view.center.y, 325 - 200 + 400)
+    -- Keyboard zoom still centers on the view.
+    grid.pointerPosition = function() error("keyboard must not use the pointer") end
+    grid:zoomStepIn()
+    hold()
+    grid:reset()
+end)
+
+test("pointer lookup is skipped off desktop and the wheel then centers", function()
+    local grid, ui, wheel = wheelReader()
+    eq(grid:pointerPosition(), nil, "not an SDL device")
+    hold({ Ctrl = true })
+    wheel(1)
+    near(ui.view.center.x, 375) -- (300, 400) * 1.25
+    near(ui.view.center.y, 500)
+    hold()
+    grid:reset()
+end)
+
+test("keypad +, - and 0 are mapped on desktop without overriding existing keys", function()
+    local dev = package.loaded.device
+    dev.isSDL = function() return true end
+    dev.input.event_map = { [0x40000056] = "Existing" }
+    local plugin = setmetatable({ ui = reader({ portrait }) }, dofile(root .. "main.lua"))
+    plugin:init()
+    eq(dev.input.event_map[0x40000057], "+")
+    eq(dev.input.event_map[0x40000062], "0")
+    eq(dev.input.event_map[0x40000056], "Existing", "an already-mapped code is left alone")
+    dev.isSDL = nil
+    dev.input.event_map = nil
+    local other = setmetatable({ ui = reader({ portrait }) }, dofile(root .. "main.lua"))
+    other:init() -- e-readers: nothing to map, nothing breaks
+end)
+
 -- Optional integration test against an unmodified KOReader checkout. The
 -- touch-zone graph, geometry, gesture matching and dispatch are real code.
 local koreader = os.getenv("KOREADER_SOURCE")

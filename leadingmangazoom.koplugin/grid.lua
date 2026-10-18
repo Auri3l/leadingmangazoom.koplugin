@@ -274,8 +274,9 @@ function Grid:onWheel(ges)
     local sideways = ges.relative and ges.relative.x and ges.relative.x / 50 or 0
     if modifierHeld("Ctrl") then
         if notches == 0 or not self.page_zoom_enabled then return false end
-        -- Wheel up (away from you) zooms in.
-        return self:zoomStep(DESKTOP_ZOOM_STEP ^ notches)
+        -- Wheel up (away from you) zooms in, keeping the spot under the
+        -- mouse pointer in place, like other desktop viewers.
+        return self:zoomStep(DESKTOP_ZOOM_STEP ^ notches, self:pointerPosition())
     end
     if self.expanded_cell ~= 0 then return false end
     local view_w, view_h = self:getViewSize()
@@ -290,23 +291,56 @@ end
 -- Zooms in (factor > 1) or out around the middle of the view: from the
 -- page view, from a quadrant, or within a free zoom. Used by the keyboard
 -- and Ctrl + wheel.
-function Grid:zoomStep(factor)
+function Grid:zoomStep(factor, pointer)
     if not self.ui.view or not self.ui.zooming then return false end
-    if self.expanded_cell then return self:zoomBy(factor) end
+    local ges = pointer and { pos = pointer } or nil
+    if self.expanded_cell then return self:zoomBy(factor, ges, pointer ~= nil) end
     if factor <= 1 then return true end -- Already showing the page.
     local page_size = self:getPageSize()
     if not page_size then return false end
     local view = self.ui.view
     local fit = self:fitZoom(page_size)
     local old_zoom = view.state.zoom or fit
-    local area = view.visible_area
-    -- Read the center before saveView, which may leave continuous view.
-    local x, y = area.x + area.w / 2, area.y + area.h / 2
+    -- Read positions before saveView, which may leave continuous view.
+    local x, y
+    if pointer then
+        x, y = self:screenToPage(pointer)
+    else
+        local area = view.visible_area
+        x, y = area.x + area.w / 2, area.y + area.h / 2
+    end
     local new_zoom = math.min(math.max(old_zoom, fit) * factor, fit * MAX_ZOOM_FACTOR)
     self:saveView()
     self.expanded_cell = 0
-    self:setZoom(new_zoom, x * new_zoom / old_zoom, y * new_zoom / old_zoom)
+    self:setZoom(new_zoom, x * new_zoom / old_zoom, y * new_zoom / old_zoom, pointer)
     return true
+end
+
+-- Where the mouse pointer is, in screen coordinates, on KOReader's desktop
+-- builds. Wheel events don't carry it, so ask SDL. Returns nil elsewhere, or
+-- if anything is unavailable, and zooming then centers on the view.
+function Grid:pointerPosition()
+    if not (Device.isSDL and Device:isSDL()) then return nil end
+    if (Screen.getRotationMode and Screen:getRotationMode() or 0) ~= 0 then return nil end
+    local ok, pos = pcall(function()
+        local ffi = require("ffi")
+        local lib = require("ffi/util").loadSDL3()
+        if not lib then return nil end
+        local S = require("ffi/SDL3")
+        -- Not declared by KOReader; redeclaring would fail, so ignore that.
+        pcall(ffi.cdef, "SDL_MouseButtonFlags SDL_GetMouseState(float *x, float *y);")
+        local xy = ffi.new("float[2]")
+        lib.SDL_GetMouseState(xy, xy + 1)
+        -- SDL reports window coordinates; KOReader may render at another scale.
+        local sx = (S.w and S.win_w and S.win_w > 0) and S.w / S.win_w or 1
+        local sy = (S.h and S.win_h and S.win_h > 0) and S.h / S.win_h or 1
+        return { x = tonumber(xy[0]) * sx, y = tonumber(xy[1]) * sy }
+    end)
+    if not ok or not pos then return nil end
+    if pos.x < 0 or pos.y < 0 or pos.x > Screen:getWidth() or pos.y > Screen:getHeight() then
+        return nil
+    end
+    return pos
 end
 
 function Grid:zoomStepIn() return self:zoomStep(DESKTOP_ZOOM_STEP) end
@@ -348,7 +382,10 @@ function Grid:saveView()
     if view.page_scroll then self.ui:handleEvent(Event:new("SetScrollMode", false)) end
 end
 
-function Grid:setZoom(zoom, x, y)
+-- Zooms to `zoom` and shows page point (x, y), given at the new zoom: in the
+-- middle of the view, or, with `anchor` (a screen position), under that
+-- position, so the spot under the mouse pointer stays put.
+function Grid:setZoom(zoom, x, y, anchor)
     local zooming = self.ui.zooming
     local was_free = zooming.zoom_mode == "free"
     zooming.zoom = zoom
@@ -356,7 +393,14 @@ function Grid:setZoom(zoom, x, y)
     -- KOReader ignores a SetZoomMode event when the mode is unchanged.
     if was_free then zooming:setZoom() end
     self:syncConfigurable()
-    self.ui.view:SetZoomCenter(x, y)
+    local view = self.ui.view
+    if anchor then
+        local area = view.visible_area
+        local offset = view.state.offset or { x = 0, y = 0 }
+        x = x - (anchor.x - offset.x) + area.w / 2
+        y = y - (anchor.y - offset.y) + area.h / 2
+    end
+    view:SetZoomCenter(x, y)
 end
 
 -- KOReader has no zoom genus for "free", so SetZoomMode("free") leaves the
@@ -431,7 +475,7 @@ function Grid:screenToPage(pos)
 end
 
 -- Applies a page zoom centered on the gesture position (or the view center).
-function Grid:zoomAt(new_zoom, ges)
+function Grid:zoomAt(new_zoom, ges, anchored)
     local view = self.ui.view
     local old_zoom = view.state.zoom or 1
     local x, y
@@ -442,7 +486,8 @@ function Grid:zoomAt(new_zoom, ges)
         x, y = area.x + area.w / 2, area.y + area.h / 2
     end
     self.expanded_cell = 0 -- 0 indicates full page zoom
-    self:setZoom(new_zoom, x * new_zoom / old_zoom, y * new_zoom / old_zoom)
+    self:setZoom(new_zoom, x * new_zoom / old_zoom, y * new_zoom / old_zoom,
+        anchored and ges and ges.pos or nil)
     return true
 end
 
@@ -476,7 +521,7 @@ end
 
 -- Rescales an active zoom. From a quadrant this switches to free page zoom,
 -- keeping the view saved when the quadrant was entered.
-function Grid:zoomBy(factor, ges)
+function Grid:zoomBy(factor, ges, anchored)
     if not self.expanded_cell then return false end
     local page_size = self:getPageSize()
     if not page_size then return true end
@@ -491,7 +536,7 @@ function Grid:zoomBy(factor, ges)
     if math.abs(new_zoom - old_zoom) < 0.001 and self.expanded_cell == 0 then
         return true -- Already at the zoom limit.
     end
-    return self:zoomAt(new_zoom, ges)
+    return self:zoomAt(new_zoom, ges, anchored)
 end
 
 -- Pinching a free page zoom zooms out step by step; without finger spans, or

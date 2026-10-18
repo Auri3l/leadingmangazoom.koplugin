@@ -35,6 +35,15 @@ function LeadingMangaZoom:init()
     self.ui.menu:registerToMainMenu(self)
     -- Desktop and keyboard devices: Ctrl + / Ctrl - zoom, Ctrl 0 returns to
     -- the page. "+" usually needs Shift, so accept it with or without Shift.
+    -- KOReader's desktop key map has no keypad +, - and 0 (SDL keycodes
+    -- 0x40000057, 0x40000056, 0x40000062), so those keys did nothing. Give
+    -- them the same names as the main keys; codes already mapped are left alone.
+    local input = Device.input
+    if Device.isSDL and Device:isSDL() and input and input.event_map then
+        for code, name in pairs({ [0x40000057] = "+", [0x40000056] = "-", [0x40000062] = "0" }) do
+            if input.event_map[code] == nil then input.event_map[code] = name end
+        end
+    end
     if Device.hasKeyboard and Device:hasKeyboard() then
         self.key_events = {
             LMZZoomIn = {
