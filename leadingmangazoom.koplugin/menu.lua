@@ -90,8 +90,12 @@ function Menu:build(plugin, Grid, AutoRotate, PageSplit, Settings, Updater)
                             text = _("Double-tap to zoom"),
                             help_text = _("Double tap anywhere on the page to zoom in on that spot; double tap again to return to the page. This turns on double taps for supported books, so single taps (page turns) wait a moment to see whether a second tap follows."),
                             checked_func = function() return Grid.double_tap_enabled end,
+                            -- Remembered right away, unlike the reading options (tap: this
+                            -- book, hold: default): those default to ON, but this one is off,
+                            -- so a this-book-only switch seemed to turn itself off (#12).
                             callback = function()
                                 local enabled = Grid:toggleDoubleTap()
+                                Settings:set("double_tap_zoom", enabled)
                                 plugin:applyDoubleTap()
                                 self_menu:showMessage(enabled
                                     and "Double-tap zoom ON\nDouble tap anywhere to zoom in or out"

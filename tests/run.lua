@@ -1131,6 +1131,7 @@ test("double-tap zoom turns KOReader's double taps on only while it is on", func
     assert(entry, "menu entry")
     local sub = entry.sub_item_table_func()
     sub[1].callback()
+    eq(saved.double_tap_zoom, true, "turning it on is remembered")
     eq(plugin.ui.disable_double_tap, false, "on: double taps reach the plugin")
     eq(input.disable_double_tap, false)
     eq(entry.text_func(), "Double-tap to zoom (2×)")
@@ -1156,6 +1157,36 @@ test("double-tap zoom turns KOReader's double taps on only while it is on", func
     eq(plugin.ui.disable_double_tap, true)
     input.disable_double_tap = nil
     plugin:onCloseDocument()
+end)
+
+test("double-tap zoom is still on after closing and reopening a book", function()
+    saved = {}
+    local function open_book()
+        local plugin = setmetatable({ ui = reader({ portrait }) }, dofile(root .. "main.lua"))
+        plugin:init()
+        plugin:onReaderReady()
+        for _, fn in ipairs(plugin.ui.post) do fn() end
+        local menu = {}
+        plugin:addToMainMenu(menu)
+        for _, item in ipairs(menu.leadingmangazoom.sub_item_table) do
+            if item.text_func and item.text_func():find("^Double%-tap to zoom") then
+                return plugin, item.sub_item_table_func()
+            end
+        end
+    end
+    local first, sub = open_book()
+    sub[1].callback()
+    sub[4].callback() -- 2.5x
+    first:onCloseDocument()
+    local second, sub2 = open_book()
+    eq(sub2[1].checked_func(), true, "still on in the next book")
+    eq(second.ui.disable_double_tap, false, "and double taps work right away")
+    eq(sub2[4].checked_func(), true, "with the same zoom level")
+    sub2[1].callback()
+    second:onCloseDocument()
+    local _, sub3 = open_book()
+    eq(sub3[1].checked_func(), false, "turning it off is remembered too")
+    package.loaded.device.input.disable_double_tap = nil
 end)
 
 -- Optional integration test against an unmodified KOReader checkout. The
