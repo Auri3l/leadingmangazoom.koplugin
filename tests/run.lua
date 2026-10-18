@@ -1087,6 +1087,77 @@ test("Updates menu is there even when the document isn't supported", function()
     eq(root_item.sub_item_table[#root_item.sub_item_table], about, "About stays last")
 end)
 
+-- Double tap to zoom (issue #12).
+test("double tap zooms in on the tapped spot at the chosen level, and back out", function()
+    local grid, ui = freeReader()
+    local dt = ui.zones.lmz_double_tap
+    eq(dt.handler({ pos = { x = 150, y = 200 } }), false, "off by default: KOReader's double tap runs")
+    grid.double_tap_enabled = true
+    eq(dt.handler({ pos = { x = 150, y = 200 } }), true)
+    eq(grid.expanded_cell, 0)
+    near(ui.view.state.zoom, 2, "default level is twice the page")
+    near(ui.view.center.x, 300) -- (150, 200) at 2x, centered
+    near(ui.view.center.y, 400)
+    eq(dt.handler({ pos = { x = 10, y = 10 } }), true)
+    eq(grid.expanded_cell, nil, "double tap again returns to the page")
+    eq(ui.zooming.zoom_mode, "page")
+    grid.double_tap_level = 3
+    dt.handler({ pos = { x = 300, y = 400 } })
+    near(ui.view.state.zoom, 3)
+    grid:collapse()
+    grid:expand(2)
+    dt.handler({ pos = { x = 300, y = 400 } })
+    eq(grid.expanded_cell, nil, "also leaves a quadrant zoom")
+    grid.double_tap_level = 1.5
+    dt.handler({ pos = { x = 300, y = 400 } })
+    near(ui.view.state.zoom, 1.5, "levels below the spread minimum are honoured")
+end)
+
+test("double-tap zoom turns KOReader's double taps on only while it is on", function()
+    saved = {}
+    local plugin = setmetatable({ ui = reader({ portrait }) }, dofile(root .. "main.lua"))
+    plugin:init()
+    plugin:onReaderReady()
+    for _, fn in ipairs(plugin.ui.post) do fn() end
+    local input = package.loaded.device.input
+    eq(plugin.ui.disable_double_tap, true, "off: KOReader's default (double taps off)")
+    eq(input.disable_double_tap, true)
+    local grid_menu = {}
+    plugin:addToMainMenu(grid_menu)
+    local entry
+    for _, item in ipairs(grid_menu.leadingmangazoom.sub_item_table) do
+        if item.text_func and item.text_func():find("^Double%-tap to zoom") then entry = item end
+    end
+    assert(entry, "menu entry")
+    local sub = entry.sub_item_table_func()
+    sub[1].callback()
+    eq(plugin.ui.disable_double_tap, false, "on: double taps reach the plugin")
+    eq(input.disable_double_tap, false)
+    eq(entry.text_func(), "Double-tap to zoom (2×)")
+    local levels = {}
+    for i = 2, #sub do levels[#levels + 1] = sub[i].text end
+    eq(table.concat(levels, ","), "Zoom level: 1.5×,Zoom level: 2×,Zoom level: 2.5×,Zoom level: 3×,Zoom level: 4×")
+    sub[5].callback()
+    eq(saved.double_tap_zoom_level, 3, "the level is remembered")
+    eq(entry.text_func(), "Double-tap to zoom (3×)")
+    sub[1].hold_callback()
+    eq(saved.double_tap_zoom, true, "hold sets the default")
+    sub[1].callback()
+    eq(plugin.ui.disable_double_tap, true, "off again: back to KOReader's setting")
+    -- Someone who turned double taps on in KOReader keeps them.
+    _G.G_reader_settings = { isFalse = function(_, k) return k == "disable_double_tap" end }
+    plugin:applyDoubleTap()
+    eq(plugin.ui.disable_double_tap, false)
+    _G.G_reader_settings = nil
+    -- Not for unsupported books.
+    sub[1].callback()
+    plugin.ui.document.file = "book.epub"
+    plugin:applyDoubleTap()
+    eq(plugin.ui.disable_double_tap, true)
+    input.disable_double_tap = nil
+    plugin:onCloseDocument()
+end)
+
 -- Optional integration test against an unmodified KOReader checkout. The
 -- touch-zone graph, geometry, gesture matching and dispatch are real code.
 local koreader = os.getenv("KOREADER_SOURCE")
@@ -1255,6 +1326,37 @@ if koreader then
         eq(which("0", { Ctrl = true }), "reset")
         eq(which("=", {}), nil)
         eq(which("-", { Ctrl = true, Alt = true }), nil)
+    end)
+
+    test("real KOReader dispatch: double tap goes before the Gestures plugin, only when on", function()
+        local input_container = dofile(koreader .. "/frontend/ui/widget/container/inputcontainer.lua")
+        local geom = package.loaded["ui/geometry"]
+        local grid, ui = gridReader()
+        ui._zones, ui._ordered_touch_zones, ui.ges_events, ui.touch_zone_dg = {}, {}, {}, nil
+        ui.registerTouchZones = input_container.registerTouchZones
+        local calls = {}
+        for _, id in ipairs({ "double_tap_left_side", "double_tap_right_side", "double_tap_top_left_corner" }) do
+            local zone = id == "double_tap_left_side" and { ratio_x = 0, ratio_y = 0, ratio_w = 0.5, ratio_h = 1 }
+                or id == "double_tap_right_side" and { ratio_x = 0.5, ratio_y = 0, ratio_w = 0.5, ratio_h = 1 }
+                or { ratio_x = 0, ratio_y = 0, ratio_w = 0.125, ratio_h = 0.125 }
+            ui:registerTouchZones({ {
+                id = id, ges = "double_tap", screen_zone = zone,
+                handler = function() calls[#calls + 1] = id; return true end,
+            } })
+        end
+        grid:setupTouchZones(function() return true end)
+        local function double_tap(x, y)
+            return input_container.onGesture(ui, { ges = "double_tap", pos = geom:new{ x = x, y = y } })
+        end
+        eq(double_tap(100, 400), true)
+        eq(calls[1], "double_tap_left_side", "off: the user's double-tap actions run")
+        grid.double_tap_enabled = true
+        eq(double_tap(500, 400), true)
+        eq(grid.expanded_cell, 0)
+        eq(double_tap(20, 20), true)
+        eq(grid.expanded_cell, nil)
+        eq(#calls, 1, "on: the plugin goes first, corners included")
+        grid:reset()
     end)
 end
 

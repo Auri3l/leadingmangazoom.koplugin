@@ -18,6 +18,8 @@ local DEFAULTS = {
     autorotate_enabled = true,
     rotate_clockwise = true,
     pagesplit_enabled = false,
+    double_tap_zoom = false,
+    double_tap_zoom_level = 2,
 }
 
 function Settings:load()

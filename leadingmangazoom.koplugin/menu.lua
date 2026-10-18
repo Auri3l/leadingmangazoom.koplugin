@@ -80,6 +80,47 @@ function Menu:build(plugin, Grid, AutoRotate, PageSplit, Settings, Updater)
                 end,
             },
             {
+                text_func = function()
+                    return _("Double-tap to zoom") .. (Grid.double_tap_enabled
+                        and (" (" .. tostring(Grid.double_tap_level):gsub("%.0$", "") .. "×)") or "")
+                end,
+                sub_item_table_func = function()
+                    local items = {
+                        {
+                            text = _("Double-tap to zoom"),
+                            help_text = _("Double tap anywhere on the page to zoom in on that spot; double tap again to return to the page. This turns on double taps for supported books, so single taps (page turns) wait a moment to see whether a second tap follows."),
+                            checked_func = function() return Grid.double_tap_enabled end,
+                            callback = function()
+                                local enabled = Grid:toggleDoubleTap()
+                                plugin:applyDoubleTap()
+                                self_menu:showMessage(enabled
+                                    and "Double-tap zoom ON\nDouble tap anywhere to zoom in or out"
+                                    or "Double-tap zoom OFF")
+                            end,
+                            hold_callback = function()
+                                Settings:set("double_tap_zoom", Grid.double_tap_enabled)
+                                self_menu:showMessage("Double-tap zoom default: " .. (Grid.double_tap_enabled and "ON" or "OFF"))
+                            end,
+                            separator = true,
+                        },
+                    }
+                    for __, level in ipairs(Grid.DOUBLE_TAP_LEVELS) do
+                        local label = tostring(level):gsub("%.0$", "") .. "×"
+                        items[#items + 1] = {
+                            text = _("Zoom level") .. ": " .. label,
+                            radio = true,
+                            enabled_func = function() return Grid.double_tap_enabled end,
+                            checked_func = function() return Grid.double_tap_level == level end,
+                            callback = function()
+                                Grid.double_tap_level = level
+                                Settings:set("double_tap_zoom_level", level)
+                            end,
+                        }
+                    end
+                    return items
+                end,
+            },
+            {
                 text = _("Auto-rotate landscape pages"),
                 checked_func = function() return AutoRotate.enabled end,
                 callback = function()
@@ -166,6 +207,7 @@ function Menu:build(plugin, Grid, AutoRotate, PageSplit, Settings, Updater)
                     self_menu:showMessage(
                         "Leading Manga Zoom\n\n" ..
                         "2-FINGER TAP to zoom quadrant.\n" ..
+                        "DOUBLE TAP to zoom (if on in menu).\n" ..
                         "SWIPE or TAP the sides to move\n" ..
                         "between quadrants.\n" ..
                         "TAP the middle to return.\n" ..
