@@ -144,10 +144,12 @@ features at a time if both are configured to handle the same gesture.
 
 ## 📅 Changelog
 
+### v1.5.1 (2026-10-18)
+- **Double-tap to zoom** ([#12](https://github.com/Auri3l/leadingmangazoom.koplugin/issues/12)): double tap anywhere to zoom in on that spot, double tap again to return. Choose the zoom level (1.5×, 2×, 2.5×, 3× or 4×) in the menu. Off by default. While on, the plugin turns on KOReader's double taps for supported books, so single taps wait briefly for a possible second tap.
+
 ### v1.5.0 (2026-10-18)
 - **Update from inside KOReader**: *Leading Manga Zoom › Updates* checks the latest GitHub release, shows its notes, downloads and installs it, then offers to restart. KOReader has no plugin store, so this replaces downloading and copying the zip by hand. Optional daily check, off by default, which never turns Wi-Fi on by itself.
 - The download is checked before anything is replaced: it must be a release zip of this plugin, contain its main files, and carry the expected version. It's unpacked into a temporary folder first, so a broken download can't leave the plugin half-updated.
-- **Double-tap to zoom** ([#12](https://github.com/Auri3l/leadingmangazoom.koplugin/issues/12)): double tap anywhere to zoom in on that spot, double tap again to return. Choose the zoom level (1.5×, 2×, 2.5×, 3× or 4×) in the menu. Off by default. While on, the plugin turns on KOReader's double taps for supported books, so single taps wait briefly for a possible second tap.
 - The plugin menu now opens for any book, so About and Updates are always reachable. Reading options still need a supported file.
 
 ### v1.4.1 (2026-10-18)
