@@ -40,6 +40,16 @@ local COLLAPSE_FACTOR = 1.05
 local DESKTOP_ZOOM_STEP = 1.25
 local WHEEL_SCROLL_RATIO = 0.2
 
+local function deepCopy(t, seen)
+    if type(t) ~= "table" then return t end
+    seen = seen or {}
+    if seen[t] then return seen[t] end
+    local copy = {}
+    seen[t] = copy
+    for k, v in pairs(t) do copy[deepCopy(k, seen)] = deepCopy(v, seen) end
+    return setmetatable(copy, getmetatable(t))
+end
+
 -- Quadrant reading order: rows top to bottom, columns by reading direction.
 local LTR_ORDER = { 1, 2, 3, 4 }
 local RTL_ORDER = { 2, 1, 4, 3 }
@@ -70,6 +80,8 @@ function Grid:clearState()
     self.original_scroll = nil
     self.original_config_scroll = nil
     self.original_page = nil
+    self.original_location = nil
+    self.screen_cells = nil
     self.pan_delta = nil
 end
 
@@ -320,6 +332,11 @@ function Grid:zoomStep(factor, pointer)
     local ges = pointer and { pos = pointer } or nil
     if self.expanded_cell then return self:zoomBy(factor, ges, pointer ~= nil) end
     if factor <= 1 then return true end -- Already showing the page.
+    if self:inContinuousView() then
+        local w, h = self:getViewSize()
+        local spot = self:locate(pointer or { x = w / 2, y = h / 2 })
+        if spot then return self:enterAt(spot, factor, pointer) end
+    end
     local page_size = self:getPageSize()
     if not page_size then return false end
     local view = self.ui.view
@@ -403,7 +420,39 @@ function Grid:saveView()
     self.original_scroll = view.page_scroll
     self.original_config_scroll = self.ui.document.configurable.page_scroll
     self.original_page = zooming.current_page
+    -- In continuous view, remember exactly where the view was scrolled to,
+    -- so returning from a zoom puts it back there (not at the page top).
+    if view.page_scroll and type(view.getViewContext) == "function" then
+        self.original_location = deepCopy(view:getViewContext())
+    end
     if view.page_scroll then self.ui:handleEvent(Event:new("SetScrollMode", false)) end
+end
+
+-- Continuous view (KOReader's scroll mode) can show parts of several pages
+-- at once, while KOReader's "current page" is just the top one (#20).
+function Grid:inContinuousView()
+    local view = self.ui.view
+    return view and view.page_scroll and type(view.screenToPageTransform) == "function" or false
+end
+
+-- The page under a screen position in continuous view, with the position in
+-- unscaled page coordinates: { page, x, y, zoom }. Nil on a page gap.
+function Grid:locate(pos)
+    local view = self.ui.view
+    local ok, p = pcall(view.screenToPageTransform, view, { x = pos.x, y = pos.y })
+    if ok and type(p) == "table" and p.page and p.x and p.y then
+        return { page = p.page, x = p.x, y = p.y, zoom = p.zoom or view.state.zoom or 1 }
+    end
+end
+
+-- After saveView: show `page` (single-page view) and make it the page the
+-- zoom belongs to, so the page change doesn't end the zoom.
+function Grid:showPage(page)
+    local paging = self.ui.paging
+    self.original_page = page
+    if page and paging and paging.current_page ~= page then
+        self.ui:handleEvent(Event:new("GotoPage", page))
+    end
 end
 
 -- Zooms to `zoom` and shows page point (x, y), given at the new zoom: in the
@@ -541,6 +590,10 @@ function Grid:expandPage(ges, level)
     factor = factor and math.max(factor, level and 1 or MIN_SPREAD_FACTOR) or DEFAULT_SPREAD_FACTOR
     local new_zoom = math.min(fit * factor, fit * MAX_ZOOM_FACTOR)
 
+    if ges and ges.pos and self:inContinuousView() then
+        local spot = self:locate(ges.pos)
+        if spot then return self:enterAt(spot, factor) end
+    end
     if not (ges and ges.pos) then
         -- No gesture position: zoom on the middle of the page.
         self:saveView()
@@ -554,6 +607,24 @@ function Grid:expandPage(ges, level)
     self:saveView()
     self.expanded_cell = 0
     self:setZoom(new_zoom, x * new_zoom / old_zoom, y * new_zoom / old_zoom)
+    return true
+end
+
+-- Continuous view: switch to the page under `spot` and zoom to `factor` of
+-- that page's fit, centered on the spot. `anchor` keeps it under a screen
+-- position instead.
+function Grid:enterAt(spot, factor, anchor)
+    self:saveView()
+    self:showPage(spot.page)
+    local page_size = self:getPageSize()
+    if not page_size then
+        self:collapse()
+        return false
+    end
+    local fit = self:fitZoom(page_size)
+    local new_zoom = math.min(math.max(spot.zoom, fit) * factor, fit * MAX_ZOOM_FACTOR)
+    self.expanded_cell = 0
+    self:setZoom(new_zoom, spot.x * new_zoom, spot.y * new_zoom, anchor)
     return true
 end
 
@@ -609,11 +680,44 @@ function Grid:showCell(cell, page_size)
     return true
 end
 
+-- Continuous view: what each quarter of the screen shows. For each quadrant,
+-- the page and spot at its middle (or the nearest spot in that quarter that
+-- isn't a gap between pages). Nil if a quadrant shows no page at all.
+function Grid:screenCells()
+    local w, h = self:getViewSize()
+    local cells = {}
+    for cell = 1, 4 do
+        local col, row = (cell - 1) % 2, math.floor((cell - 1) / 2)
+        local x = (col * 0.5 + 0.25) * w
+        for _, f in ipairs({ 0.25, 0.15, 0.35, 0.05, 0.45 }) do
+            cells[cell] = self:locate({ x = x, y = (row * 0.5 + f) * h })
+            if cells[cell] then break end
+        end
+        if not cells[cell] then return nil end
+    end
+    return cells
+end
+
+-- Shows a quarter of the screen as it was in continuous view: on the page
+-- it showed, at twice the size it was shown.
+function Grid:showScreenCell(cell)
+    local spot = self.screen_cells[cell]
+    self:showPage(spot.page)
+    local zoom = spot.zoom * 2
+    self.expanded_cell = cell
+    self:setZoom(zoom, spot.x * zoom, spot.y * zoom)
+    return true
+end
+
 function Grid:expand(cell)
     if not self.ui.view or not self.ui.zooming then return false end
-    local page_size = self:getPageSize()
-    if not page_size then return false end
+    -- Continuous view: quadrants are quarters of the screen, not of the
+    -- top page, which may only be partly visible (#20).
+    local cells = self:inContinuousView() and self:screenCells()
+    local page_size = not cells and self:getPageSize()
+    if not cells and not page_size then return false end
     self:saveView()
+    self.screen_cells = cells or nil
 
     -- Save and set RTL direction if enabled
     if self.rtl_enabled then
@@ -624,12 +728,14 @@ function Grid:expand(cell)
         end
     end
 
+    if self.screen_cells then return self:showScreenCell(cell) end
     return self:showCell(cell, page_size)
 end
 
 -- Moves an already zoomed view to another quadrant, keeping the saved view.
 function Grid:moveTo(cell)
     if cell == self.expanded_cell then return true end
+    if self.screen_cells then return self:showScreenCell(cell) end
     local page_size = self:getPageSize()
     if not page_size then return false end
     return self:showCell(cell, page_size)
@@ -648,21 +754,36 @@ function Grid:step(diff)
     return self:turnPage(diff)
 end
 
+-- Where the view is: the page, and in continuous view also how far down.
+function Grid:viewPosition()
+    local view, paging = self.ui.view, self.ui.paging
+    local top = view and view.page_scroll and view.page_states and view.page_states[1]
+    if top and top.visible_area then
+        return top.page .. ":" .. tostring(top.visible_area.y)
+    end
+    return tostring(paging and paging.current_page)
+end
+
 function Grid:turnPage(diff)
     local paging = self.ui.paging
     self:cancelExpand()
+    -- Past the last quarter of a continuous view, scroll to the next screen
+    -- (KOReader's own page turn there) and continue on its first quarter.
+    local continuous = self.screen_cells ~= nil
     self:collapse()
     if not paging then return true end
-    local page = paging.current_page
+    local before = self:viewPosition()
     paging:onGotoViewRel(diff)
+    local after = self:viewPosition()
+    if after == before then return true end
     local new_page = paging.current_page
-    if new_page == page then return true end
     -- Wait for page-turn work (rotation, split-page panning) scheduled by
     -- the page change, then zoom on the new page.
     self.pending_expand = function()
         self.pending_expand = nil
         if self.expanded_cell or not self.enabled or not self.ui.paging
-                or self.ui.paging.current_page ~= new_page
+                or (not continuous and self.ui.paging.current_page ~= new_page)
+                or (continuous and self:viewPosition() ~= after)
                 or (self.can_continue and not self.can_continue()) then
             return
         end
@@ -704,8 +825,11 @@ function Grid:collapse()
     if self.original_config_scroll ~= nil then
         self.ui.document.configurable.page_scroll = self.original_config_scroll
     end
-    -- The saved pan position only applies to the page it was taken on.
-    if self.original_visible_area and zooming.current_page == self.original_page then
+    if self.original_location and self.ui.view.page_scroll then
+        -- Back to exactly where continuous view was scrolled to.
+        self.ui:handleEvent(Event:new("RestoreBookLocation", self.original_location))
+    elseif self.original_visible_area and zooming.current_page == self.original_page then
+        -- The saved pan position only applies to the page it was taken on.
         local area = self.original_visible_area
         local visible = self.ui.view.visible_area
         self.ui.view:PanningUpdate(area.x - visible.x, area.y - visible.y)

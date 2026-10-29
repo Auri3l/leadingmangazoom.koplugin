@@ -1189,6 +1189,179 @@ test("double-tap zoom is still on after closing and reopening a book", function(
     package.loaded.device.input.disable_double_tap = nil
 end)
 
+-- Continuous view (#20): quadrants and zoom follow what the screen shows.
+-- Screen 600x800, pages 600x800 at zoom 1, gap 0. `top` is how many pixels
+-- of `first` show at the top of the screen; the next page fills the rest.
+local function continuousReader(first, top)
+    local ui = reader({ portrait, portrait, portrait, portrait })
+    local view = ui.view
+    local events = {}
+    local function states(page, shown)
+        return {
+            { page = page, zoom = 1, offset = { x = 0, y = 0 },
+              visible_area = { x = 0, y = 800 - shown, w = 600, h = shown } },
+            { page = page + 1, zoom = 1, offset = { x = 0, y = 0 },
+              visible_area = { x = 0, y = 0, w = 600, h = 800 - shown } },
+        }
+    end
+    view.page_scroll = true
+    view.page_states = states(first, top)
+    ui.paging.current_page, ui.zooming.current_page = first, first
+    -- KOReader's ReaderView:getScrollPagePosition, page gap 0.
+    function view:screenToPageTransform(pos)
+        local y = pos.y
+        for _, st in ipairs(self.page_states) do
+            if y < st.visible_area.h + st.offset.y then
+                return { page = st.page, zoom = st.zoom,
+                    x = (st.visible_area.x + pos.x - st.offset.x) / st.zoom,
+                    y = (st.visible_area.y + y - st.offset.y) / st.zoom }
+            end
+            y = y - st.visible_area.h
+        end
+    end
+    function view:getViewContext() return self.page_states end
+    local handle = ui.handleEvent
+    function ui:handleEvent(event)
+        events[#events + 1] = event.name
+        if event.name == "GotoPage" then
+            return self.paging:_gotoPage(event[1])
+        elseif event.name == "RestoreBookLocation" then
+            self.restored = event[1]
+            self.view.page_states = event[1]
+            self.paging.current_page = event[1][1].page
+            self.zooming.current_page = event[1][1].page
+            return true
+        end
+        return handle(self, event)
+    end
+    -- In continuous view, a page turn scrolls one screen down: the bottom
+    -- page moves to the top, with what was below the screen.
+    local single = ui.paging.onGotoViewRel
+    ui.paging.onGotoViewRel = function(paging, diff, no_page_turn)
+        if view.page_scroll then
+            paging.calls = paging.calls + 1
+            local bottom = view.page_states[2]
+            local shown = 800 - (bottom.visible_area.y + bottom.visible_area.h)
+            view.page_states = states(bottom.page, shown)
+            paging.current_page, ui.zooming.current_page = bottom.page, bottom.page
+            return true
+        end
+        return single(paging, diff, no_page_turn)
+    end
+    local grid = dofile(root .. "grid.lua")
+    grid:init(ui, settings({ grid_enabled = true, page_zoom_enabled = true, grid_navigation_enabled = true }))
+    ui.onPage = function(n) grid:onPageUpdate(n) end
+    grid:setupTouchZones(function() return true end)
+    grid:installNavigation(function() return true end)
+    return grid, ui, events, states
+end
+
+test("continuous view: quadrants are quarters of the screen, across pages", function()
+    -- The issue's case: the top page fills 40% of the screen, the next 60%.
+    local grid, ui = continuousReader(1, 320)
+    grid:expand(3)
+    eq(grid.expanded_cell, 3)
+    eq(ui.zooming.current_page, 2, "bottom-left quarter is on the next page")
+    near(ui.view.state.zoom, 2)
+    -- Screen (150, 600) is page 2 at (150, 280); at 2x that's (300, 560).
+    near(ui.view.center.x, 300)
+    near(ui.view.center.y, 560)
+    eq(ui.view.page_scroll, false)
+    grid:collapse()
+    local grid2, ui2 = continuousReader(1, 320)
+    grid2:expand(1)
+    eq(ui2.zooming.current_page, 1, "top-left quarter is on the top page")
+    -- Screen (150, 200) is page 1 at (150, 680), which shows near its bottom.
+    near(ui2.view.center.x, 300)
+    near(ui2.view.center.y, 1360)
+end)
+
+test("continuous view: moving between quarters crosses pages without ending the zoom", function()
+    local grid, ui = continuousReader(1, 320)
+    grid:expand(1)
+    eq(ui.zooming.current_page, 1)
+    eq(ui.zones.lmz_cell_swipe.handler({ direction = "north" }), true)
+    eq(grid.expanded_cell, 3, "down to the bottom-left quarter")
+    eq(ui.zooming.current_page, 2)
+    eq(grid.expanded_cell ~= nil, true, "still zoomed after the page change")
+    near(ui.view.center.y, 560)
+    eq(ui.zones.lmz_cell_swipe.handler({ direction = "west" }), true)
+    eq(grid.expanded_cell, 4)
+    eq(ui.zooming.current_page, 2)
+end)
+
+test("continuous view: returning puts the view back exactly where it was scrolled", function()
+    local grid, ui, events = continuousReader(1, 320)
+    local before = ui.view.page_states
+    grid:expand(3)
+    grid:collapse()
+    eq(ui.view.page_scroll, true)
+    assert(ui.restored, "location restored")
+    eq(ui.restored[1].page, 1)
+    eq(ui.restored[1].visible_area.y, 480)
+    eq(ui.restored[2].visible_area.h, 480)
+    assert(ui.restored ~= before, "a copy, not KOReader's live table")
+    eq(ui.zooming.current_page, 1)
+end)
+
+test("continuous view: past the last quarter, the next screen starts at its first", function()
+    local grid, ui = continuousReader(1, 320)
+    grid:expand(4)
+    eq(ui.zones.lmz_cell_swipe.handler({ direction = "west" }), true)
+    eq(grid.expanded_cell, nil, "between screens the zoom is released")
+    flush()
+    eq(grid.expanded_cell, 1, "first quarter of the next screen")
+    -- The next screen starts where the last one ended: page 2 from y 480
+    -- (its lower 320px), then page 3. The first quarter's middle is screen
+    -- y 200, i.e. page 2 at y 680; at 2x that's 1360.
+    eq(ui.zooming.current_page, 2)
+    near(ui.view.center.y, 1360)
+    eq(ui.view.page_scroll, false)
+end)
+
+test("continuous view: spread, double tap and Ctrl + wheel zoom the spot under them", function()
+    local grid, ui = continuousReader(1, 320)
+    eq(ui.zones.lmz_page_spread.handler({ pos = { x = 300, y = 600 }, start_span = 100, span = 300 }), true)
+    eq(ui.zooming.current_page, 2, "spread on the next page zooms the next page")
+    near(ui.view.state.zoom, 3)
+    near(ui.view.center.x, 900)
+    near(ui.view.center.y, 840) -- page 2 at (300, 280), 3x
+    grid:collapse()
+    eq(ui.view.page_scroll, true)
+    grid.double_tap_enabled = true
+    ui.zones.lmz_double_tap.handler({ pos = { x = 100, y = 100 } })
+    eq(ui.zooming.current_page, 1)
+    near(ui.view.center.y, (480 + 100) * 2)
+    grid:collapse()
+    eq(grid:zoomStep(1.25, { x = 300, y = 700 }), true)
+    eq(ui.zooming.current_page, 2)
+    near(ui.view.state.zoom, 1.25)
+end)
+
+test("continuous view: a page gap in the middle of a quarter is skipped", function()
+    local grid, ui = continuousReader(1, 320)
+    local view = ui.view
+    -- A 100px gap from y 150 to 250 covers the top quarters' middles.
+    view.page_states[1].visible_area = { x = 0, y = 650, w = 600, h = 150 }
+    view.page_states[2].visible_area = { x = 0, y = 0, w = 600, h = 550 }
+    function view:screenToPageTransform(pos)
+        if pos.y < 150 then return { page = 1, zoom = 1, x = pos.x, y = 650 + pos.y } end
+        if pos.y < 250 then return nil end
+        return { page = 2, zoom = 1, x = pos.x, y = pos.y - 250 }
+    end
+    grid:expand(1)
+    eq(grid.expanded_cell, 1)
+    eq(ui.zooming.current_page, 1, "uses a spot of the quarter that shows a page")
+end)
+
+test("single-page view keeps dividing the page itself", function()
+    local grid, ui = navReader(false)
+    ui.view.screenToPageTransform = function() error("not used in single-page view") end
+    grid:expand(3)
+    near(ui.view.center.x, 300) -- (0.25 * 600) * 2
+    near(ui.view.center.y, 1200) -- (0.75 * 800) * 2
+end)
+
 -- Optional integration test against an unmodified KOReader checkout. The
 -- touch-zone graph, geometry, gesture matching and dispatch are real code.
 local koreader = os.getenv("KOREADER_SOURCE")
