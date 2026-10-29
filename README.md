@@ -43,6 +43,7 @@ A KOReader plugin for reading fixed-layout pages up close: manga and comics, but
 
 1. **Open a Supported Document**: Open any compatible comic archive or PDF.
 2. **Two-Finger Tap**: Tap on any of the 4 quadrants of the screen to zoom in.
+    - In **continuous view** (KOReader's scroll mode), the quadrants are quarters of the screen as you see it, even when it shows the end of one page and the start of the next. Moving between quadrants follows the screen across pages, and after the last quadrant the next screen starts at its first.
 3. **Move Between Quadrants**: While zoomed in:
     - **Swipe** left/right to go to the next/previous quadrant in reading order, or up/down to go to the quadrant below/above.
     - **Tap** the left or right third of the screen to go back or forward (mirrored in RTL mode).
@@ -143,6 +144,11 @@ features at a time if both are configured to handle the same gesture.
 ---
 
 ## 📅 Changelog
+
+### v1.5.3 (2026-10-29)
+- **Continuous view zooms what you see** ([#20](https://github.com/Auri3l/leadingmangazoom.koplugin/issues/20)): when the screen shows parts of two pages, quadrant zoom used to divide KOReader's "current page" (the top one) into quarters, so tapping the bottom of the screen could zoom into the wrong page. Quadrants are now quarters of the screen, on whichever page each one shows. Moving between quadrants crosses pages, and going past the last one scrolls to the next screen.
+- Spread, double tap and desktop Ctrl + wheel in continuous view now zoom into the page under your fingers or pointer, not the top page.
+- Returning from any zoom in continuous view puts the view back exactly where it was scrolled, instead of at the top of a page.
 
 ### v1.5.2 (2026-10-18)
 - **Double-tap zoom stays on**: turning it on is now remembered for all books. Before, tapping the option only turned it on for the open book, so it seemed to switch itself off after closing the book (reported on a Kindle Paperwhite). The other options keep working as before: tap for this book, hold to set the default.
